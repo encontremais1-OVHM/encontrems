@@ -36,6 +36,7 @@ export function ModulePlaceholder({
       <div className="grid gap-4 lg:grid-cols-5">
         <section className="rounded-xl border bg-card shadow-card lg:col-span-3">
           <EmptyState
+            className="h-full"
             icon={icon}
             title={`Módulo em preparação — Fase ${phase}`}
             description="A interface deste módulo será ligada ao backend Laravel nesta fase. Até lá, não são apresentados dados."
