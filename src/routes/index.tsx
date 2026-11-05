@@ -38,7 +38,7 @@ function Home() {
   return (
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5">
-        <Logo className="h-9 sm:h-10" />
+        <Logo className="h-8 sm:h-9" />
         <Button variant="outline" size="sm" asChild>
           <Link to="/entrar">Área administrativa</Link>
         </Button>

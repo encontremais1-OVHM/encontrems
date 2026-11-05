@@ -66,7 +66,7 @@ function LoginPage() {
       <div className="flex flex-col justify-center px-6 py-12 sm:px-12">
         <div className="mx-auto w-full max-w-sm">
           <Link to="/" aria-label="Encontre + — Início">
-            <Logo className="h-10" />
+            <Logo className="h-9" />
           </Link>
           <h1 className="mt-10 text-2xl font-extrabold text-foreground">Painel administrativo</h1>
           <p className="mt-1 text-sm text-muted-foreground">

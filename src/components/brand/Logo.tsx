@@ -7,8 +7,8 @@ export function Logo({ className }: { className?: string }) {
     <img
       src={logoAsset.url}
       alt="Encontre +"
-      width={1920}
-      height={640}
+      width={1757}
+      height={502}
       className={cn("h-9 w-auto select-none", className)}
       draggable={false}
     />

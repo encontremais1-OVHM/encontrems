@@ -84,7 +84,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <div className="flex h-16 items-center border-b border-sidebar-border px-5">
           <Link to="/admin" aria-label="Encontre + — Dashboard">
-            <Logo className="h-8" />
+            <Logo className="h-7" />
           </Link>
         </div>
         <SidebarNav />
@@ -103,7 +103,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <SheetContent side="left" className="flex w-72 flex-col bg-sidebar p-0">
               <SheetTitle className="sr-only">Navegação</SheetTitle>
               <div className="flex h-16 items-center border-b border-sidebar-border px-5">
-                <Logo className="h-8" />
+                <Logo className="h-7" />
               </div>
               <SidebarNav onNavigate={() => setMobileOpen(false)} />
               <SidebarFooter />
