@@ -28,3 +28,13 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules (Encontre +)
+
+- Never enable Lovable Cloud or any Lovable-managed database: the owner runs Laravel + external Supabase + Railway; the browser only talks to the Laravel API.
+- Frontend lives at repo root (Lovable requirement); Laravel goes in `backend/`, WhatsApp service in `whatsapp-bridge/`, docs in `docs/` — keeps responsibilities separated in one repo.
+- All HTTP calls go through `src/lib/api/client.ts` with types in `src/lib/api/types.ts`, mirrored in `docs/API_CONTRACT.md` — one contract the Laravel team implements against.
+- Money is integer Kwanza (`*_kz`) end to end and formatted with `src/lib/format.ts`; dates render in Africa/Luanda — avoids float errors and timezone drift.
+- Financial/subscription state is computed only by the backend; `src/lib/plan-defaults.ts` is display-only fallback copy.
+- Modules not yet built render `ModulePlaceholder` (features + API contract) instead of fake data or dead buttons.
+- WhatsApp/Bider and payment gateways sit behind replaceable adapters; never implement provider endpoints before the official docs are supplied.

@@ -1,29 +1,41 @@
-# Welcome to your Lovable project
+# Encontre +
 
-This project was built with [Lovable](https://lovable.dev).
+Plataforma de gestão da comunidade privada Encontre + (WhatsApp), em parceria com Oswaldina — Angola.
+**Comunidade, oportunidades e conexões.**
 
-## Build with Lovable
+## Estrutura
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+```text
+src/               Frontend React + TypeScript + Vite + Tailwind
+backend/           API Laravel (Fase 2)
+whatsapp-bridge/   Integração WhatsApp / Bider (Fase 5)
+docs/              Arquitetura (ARQUITETURA.md) e contrato de API (API_CONTRACT.md)
+roadmap.md         Estado das fases
+```
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+## Frontend — desenvolvimento local
 
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requer Node.js 20+ (ou Bun).
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+npm install
+cp .env.example .env.local   # defina VITE_API_URL com o URL da API Laravel
 npm run dev
 ```
 
-## Built with
+Sem `VITE_API_URL`, o painel abre em modo de pré-visualização e mostra estados vazios — nunca dados fictícios.
 
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
+```sh
+npm run build   # build de produção
+npm test        # testes
+```
+
+## Segurança
+
+O frontend só contém valores públicos. Credenciais do Supabase, Bider, gateways de pagamento e email ficam exclusivamente nas variáveis de ambiente do Railway (Laravel / Bridge).
+
+## Infraestrutura
+
+- Código: GitHub
+- Base de dados e ficheiros: Supabase externo do proprietário (acesso apenas via Laravel)
+- Execução: Railway (web, worker, scheduler, whatsapp-bridge)
