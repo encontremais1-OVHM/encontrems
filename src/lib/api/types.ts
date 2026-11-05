@@ -82,3 +82,104 @@ export interface LoginResponse {
   token: string;
   user: AdminUser;
 }
+
+export interface MeResponse {
+  user: AdminUser;
+}
+
+/* ------------------------------------------------------------------ */
+/* Public catalogue, registration and status (no authentication).      */
+/* ------------------------------------------------------------------ */
+
+export interface PublicSubgroup {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+}
+
+export interface PublicCommunity {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  /** What the community is for — shown as "Finalidade". */
+  purpose: string | null;
+  /** Absolute URL of the cover image managed in the panel, or null. */
+  image_url: string | null;
+  subgroups: PublicSubgroup[];
+}
+
+export interface PublicPlan {
+  initial_price_kz: number;
+  renewal_price_kz: number;
+  duration_days: number;
+  warning_day: number;
+  grace_days: number;
+}
+
+export interface RegistrationInput {
+  community_id: number;
+  subgroup_id: number;
+  full_name: string;
+  /** E.164 digits, e.g. 244923000000 */
+  whatsapp: string;
+  email: string | null;
+  province: string;
+  city: string;
+  interests: string[];
+}
+
+export type RegistrationStatus =
+  | "pending_payment"
+  | "payment_under_review"
+  | "approved"
+  | "rejected"
+  | "cancelled";
+
+export interface PaymentInstruction {
+  /** Machine key of the method, e.g. "bank_transfer", "multicaixa_express". */
+  method: string;
+  label: string;
+  /** Lines to display as-is (IBAN, entity, beneficiary…). */
+  details: string[];
+}
+
+export interface RegistrationPayment {
+  reference: string;
+  amount_kz: number;
+  status: PaymentStatus;
+  instructions: PaymentInstruction[];
+  /** Hosted checkout of an automatic gateway, when one is configured. */
+  checkout_url: string | null;
+  /** True when the backend accepts a proof of payment for manual validation. */
+  proof_upload_enabled: boolean;
+  proof_submitted_at: string | null;
+}
+
+export interface RegistrationReceipt {
+  reference: string;
+  status: RegistrationStatus;
+  payment: RegistrationPayment;
+}
+
+export interface RegistrationAccess {
+  community: AccessStatus;
+  subgroup: AccessStatus;
+  /** Only sent by the backend once access is authorised. */
+  community_invite_url: string | null;
+  subgroup_invite_url: string | null;
+}
+
+export interface RegistrationStatusResponse {
+  reference: string;
+  status: RegistrationStatus;
+  full_name: string;
+  created_at: string;
+  community: { name: string; slug: string };
+  subgroup: { name: string; slug: string };
+  payment: RegistrationPayment | null;
+  subscription: { status: SubscriptionStatus; due_at: string | null } | null;
+  access: RegistrationAccess | null;
+  rejection_reason: string | null;
+}

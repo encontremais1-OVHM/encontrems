@@ -49,7 +49,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!isApiConfigured()) throw new ApiNotConfiguredError();
 
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (options.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   if (options.auth !== false) {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -60,7 +61,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     response = await fetch(buildUrl(path, options.query), {
       method: options.method ?? "GET",
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : null,
+      body:
+        options.body === undefined
+          ? null
+          : isForm
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
       signal: options.signal ?? null,
     });
   } catch {
@@ -93,6 +99,7 @@ export function describeApiError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) return "Sessão expirada ou inválida. Inicie sessão novamente.";
     if (error.status === 403) return "Não tem permissão para esta ação.";
+    if (error.status === 404) return error.message || "Não encontrado.";
     if (error.status === 429) return "Demasiados pedidos. Aguarde um momento e tente novamente.";
     return error.message;
   }
