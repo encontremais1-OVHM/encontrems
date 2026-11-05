@@ -10,33 +10,229 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as EntrarRouteImport } from './routes/entrar'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAcessosRouteImport } from './routes/admin.acessos'
+import { Route as AdminAssinaturasRouteImport } from './routes/admin.assinaturas'
+import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
+import { Route as AdminComunidadesRouteImport } from './routes/admin.comunidades'
+import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
+import { Route as AdminGruposRouteImport } from './routes/admin.grupos'
+import { Route as AdminInscricoesRouteImport } from './routes/admin.inscricoes'
+import { Route as AdminMembrosRouteImport } from './routes/admin.membros'
+import { Route as AdminNotificacoesRouteImport } from './routes/admin.notificacoes'
+import { Route as AdminPagamentosRouteImport } from './routes/admin.pagamentos'
+import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
+import { Route as AdminUtilizadoresRouteImport } from './routes/admin.utilizadores'
+import { Route as AdminWhatsappRouteImport } from './routes/admin.whatsapp'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EntrarRoute = EntrarRouteImport.update({
+  id: '/entrar',
+  path: '/entrar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAcessosRoute = AdminAcessosRouteImport.update({
+  id: '/acessos',
+  path: '/acessos',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAssinaturasRoute = AdminAssinaturasRouteImport.update({
+  id: '/assinaturas',
+  path: '/assinaturas',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAuditoriaRoute = AdminAuditoriaRouteImport.update({
+  id: '/auditoria',
+  path: '/auditoria',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminComunidadesRoute = AdminComunidadesRouteImport.update({
+  id: '/comunidades',
+  path: '/comunidades',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminGruposRoute = AdminGruposRouteImport.update({
+  id: '/grupos',
+  path: '/grupos',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminInscricoesRoute = AdminInscricoesRouteImport.update({
+  id: '/inscricoes',
+  path: '/inscricoes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMembrosRoute = AdminMembrosRouteImport.update({
+  id: '/membros',
+  path: '/membros',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminNotificacoesRoute = AdminNotificacoesRouteImport.update({
+  id: '/notificacoes',
+  path: '/notificacoes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPagamentosRoute = AdminPagamentosRouteImport.update({
+  id: '/pagamentos',
+  path: '/pagamentos',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRelatoriosRoute = AdminRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUtilizadoresRoute = AdminUtilizadoresRouteImport.update({
+  id: '/utilizadores',
+  path: '/utilizadores',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminWhatsappRoute = AdminWhatsappRouteImport.update({
+  id: '/whatsapp',
+  path: '/whatsapp',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
+  '/entrar': typeof EntrarRoute
+  '/admin/acessos': typeof AdminAcessosRoute
+  '/admin/assinaturas': typeof AdminAssinaturasRoute
+  '/admin/auditoria': typeof AdminAuditoriaRoute
+  '/admin/comunidades': typeof AdminComunidadesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/grupos': typeof AdminGruposRoute
+  '/admin/inscricoes': typeof AdminInscricoesRoute
+  '/admin/membros': typeof AdminMembrosRoute
+  '/admin/notificacoes': typeof AdminNotificacoesRoute
+  '/admin/pagamentos': typeof AdminPagamentosRoute
+  '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/utilizadores': typeof AdminUtilizadoresRoute
+  '/admin/whatsapp': typeof AdminWhatsappRoute
+  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/entrar': typeof EntrarRoute
+  '/admin/acessos': typeof AdminAcessosRoute
+  '/admin/assinaturas': typeof AdminAssinaturasRoute
+  '/admin/auditoria': typeof AdminAuditoriaRoute
+  '/admin/comunidades': typeof AdminComunidadesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/grupos': typeof AdminGruposRoute
+  '/admin/inscricoes': typeof AdminInscricoesRoute
+  '/admin/membros': typeof AdminMembrosRoute
+  '/admin/notificacoes': typeof AdminNotificacoesRoute
+  '/admin/pagamentos': typeof AdminPagamentosRoute
+  '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/utilizadores': typeof AdminUtilizadoresRoute
+  '/admin/whatsapp': typeof AdminWhatsappRoute
+  '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteWithChildren
+  '/entrar': typeof EntrarRoute
+  '/admin/acessos': typeof AdminAcessosRoute
+  '/admin/assinaturas': typeof AdminAssinaturasRoute
+  '/admin/auditoria': typeof AdminAuditoriaRoute
+  '/admin/comunidades': typeof AdminComunidadesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/grupos': typeof AdminGruposRoute
+  '/admin/inscricoes': typeof AdminInscricoesRoute
+  '/admin/membros': typeof AdminMembrosRoute
+  '/admin/notificacoes': typeof AdminNotificacoesRoute
+  '/admin/pagamentos': typeof AdminPagamentosRoute
+  '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/utilizadores': typeof AdminUtilizadoresRoute
+  '/admin/whatsapp': typeof AdminWhatsappRoute
+  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/entrar'
+    | '/admin/acessos'
+    | '/admin/assinaturas'
+    | '/admin/auditoria'
+    | '/admin/comunidades'
+    | '/admin/configuracoes'
+    | '/admin/grupos'
+    | '/admin/inscricoes'
+    | '/admin/membros'
+    | '/admin/notificacoes'
+    | '/admin/pagamentos'
+    | '/admin/relatorios'
+    | '/admin/utilizadores'
+    | '/admin/whatsapp'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/entrar'
+    | '/admin/acessos'
+    | '/admin/assinaturas'
+    | '/admin/auditoria'
+    | '/admin/comunidades'
+    | '/admin/configuracoes'
+    | '/admin/grupos'
+    | '/admin/inscricoes'
+    | '/admin/membros'
+    | '/admin/notificacoes'
+    | '/admin/pagamentos'
+    | '/admin/relatorios'
+    | '/admin/utilizadores'
+    | '/admin/whatsapp'
+    | '/admin'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/entrar'
+    | '/admin/acessos'
+    | '/admin/assinaturas'
+    | '/admin/auditoria'
+    | '/admin/comunidades'
+    | '/admin/configuracoes'
+    | '/admin/grupos'
+    | '/admin/inscricoes'
+    | '/admin/membros'
+    | '/admin/notificacoes'
+    | '/admin/pagamentos'
+    | '/admin/relatorios'
+    | '/admin/utilizadores'
+    | '/admin/whatsapp'
+    | '/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRouteWithChildren
+  EntrarRoute: typeof EntrarRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +244,161 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/entrar': {
+      id: '/entrar'
+      path: '/entrar'
+      fullPath: '/entrar'
+      preLoaderRoute: typeof EntrarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/acessos': {
+      id: '/admin/acessos'
+      path: '/acessos'
+      fullPath: '/admin/acessos'
+      preLoaderRoute: typeof AdminAcessosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/assinaturas': {
+      id: '/admin/assinaturas'
+      path: '/assinaturas'
+      fullPath: '/admin/assinaturas'
+      preLoaderRoute: typeof AdminAssinaturasRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/auditoria': {
+      id: '/admin/auditoria'
+      path: '/auditoria'
+      fullPath: '/admin/auditoria'
+      preLoaderRoute: typeof AdminAuditoriaRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/comunidades': {
+      id: '/admin/comunidades'
+      path: '/comunidades'
+      fullPath: '/admin/comunidades'
+      preLoaderRoute: typeof AdminComunidadesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/configuracoes': {
+      id: '/admin/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/admin/configuracoes'
+      preLoaderRoute: typeof AdminConfiguracoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/grupos': {
+      id: '/admin/grupos'
+      path: '/grupos'
+      fullPath: '/admin/grupos'
+      preLoaderRoute: typeof AdminGruposRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/inscricoes': {
+      id: '/admin/inscricoes'
+      path: '/inscricoes'
+      fullPath: '/admin/inscricoes'
+      preLoaderRoute: typeof AdminInscricoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/membros': {
+      id: '/admin/membros'
+      path: '/membros'
+      fullPath: '/admin/membros'
+      preLoaderRoute: typeof AdminMembrosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/notificacoes': {
+      id: '/admin/notificacoes'
+      path: '/notificacoes'
+      fullPath: '/admin/notificacoes'
+      preLoaderRoute: typeof AdminNotificacoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/pagamentos': {
+      id: '/admin/pagamentos'
+      path: '/pagamentos'
+      fullPath: '/admin/pagamentos'
+      preLoaderRoute: typeof AdminPagamentosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios': {
+      id: '/admin/relatorios'
+      path: '/relatorios'
+      fullPath: '/admin/relatorios'
+      preLoaderRoute: typeof AdminRelatoriosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/utilizadores': {
+      id: '/admin/utilizadores'
+      path: '/utilizadores'
+      fullPath: '/admin/utilizadores'
+      preLoaderRoute: typeof AdminUtilizadoresRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/whatsapp': {
+      id: '/admin/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/admin/whatsapp'
+      preLoaderRoute: typeof AdminWhatsappRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
+interface AdminRouteChildren {
+  AdminAcessosRoute: typeof AdminAcessosRoute
+  AdminAssinaturasRoute: typeof AdminAssinaturasRoute
+  AdminAuditoriaRoute: typeof AdminAuditoriaRoute
+  AdminComunidadesRoute: typeof AdminComunidadesRoute
+  AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
+  AdminGruposRoute: typeof AdminGruposRoute
+  AdminInscricoesRoute: typeof AdminInscricoesRoute
+  AdminMembrosRoute: typeof AdminMembrosRoute
+  AdminNotificacoesRoute: typeof AdminNotificacoesRoute
+  AdminPagamentosRoute: typeof AdminPagamentosRoute
+  AdminRelatoriosRoute: typeof AdminRelatoriosRoute
+  AdminUtilizadoresRoute: typeof AdminUtilizadoresRoute
+  AdminWhatsappRoute: typeof AdminWhatsappRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminAcessosRoute: AdminAcessosRoute,
+  AdminAssinaturasRoute: AdminAssinaturasRoute,
+  AdminAuditoriaRoute: AdminAuditoriaRoute,
+  AdminComunidadesRoute: AdminComunidadesRoute,
+  AdminConfiguracoesRoute: AdminConfiguracoesRoute,
+  AdminGruposRoute: AdminGruposRoute,
+  AdminInscricoesRoute: AdminInscricoesRoute,
+  AdminMembrosRoute: AdminMembrosRoute,
+  AdminNotificacoesRoute: AdminNotificacoesRoute,
+  AdminPagamentosRoute: AdminPagamentosRoute,
+  AdminRelatoriosRoute: AdminRelatoriosRoute,
+  AdminUtilizadoresRoute: AdminUtilizadoresRoute,
+  AdminWhatsappRoute: AdminWhatsappRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRouteWithChildren,
+  EntrarRoute: EntrarRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
