@@ -191,7 +191,7 @@ function MembersPage() {
           </TableBody>
         </Table>
 
-        {!query.isPending && rows.length === 0 && (
+        {!(configured && query.isPending) && rows.length === 0 && (
           <EmptyState
             icon={Users}
             title={
