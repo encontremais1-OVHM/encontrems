@@ -199,3 +199,40 @@
   background-size: 48px 48px;
   mask-image: radial-gradient(ellipse at top, black 30%, transparent 75%);
 }
+
+/* Hero: three columns of group tiles scrolling vertically, alternating direction. */
+@theme {
+  --animate-scroll-up: scroll-up var(--scroll-duration, 48s) linear infinite;
+  --animate-scroll-down: scroll-down var(--scroll-duration, 48s) linear infinite;
+
+  @keyframes scroll-up {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(0, -50%, 0);
+    }
+  }
+
+  @keyframes scroll-down {
+    from {
+      transform: translate3d(0, -50%, 0);
+    }
+    to {
+      transform: translate3d(0, 0, 0);
+    }
+  }
+}
+
+@utility mask-fade-y {
+  mask-image: linear-gradient(to bottom, transparent 0, black 14%, black 86%, transparent 100%);
+}
+
+@utility tile-overlay {
+  background-image: linear-gradient(
+    to top,
+    oklch(0.2 0.04 258 / 82%) 0%,
+    oklch(0.2 0.04 258 / 35%) 45%,
+    transparent 70%
+  );
+}
