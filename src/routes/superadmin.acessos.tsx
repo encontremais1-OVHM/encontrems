@@ -3,7 +3,7 @@ import { ShieldCheck } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/acessos")({
+export const Route = createFileRoute("/superadmin/acessos")({
   head: () => ({
     meta: [
       { title: "Controlo de acesso — Encontre +" },

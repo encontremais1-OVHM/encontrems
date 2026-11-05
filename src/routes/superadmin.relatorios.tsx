@@ -3,7 +3,7 @@ import { BarChart3 } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/relatorios")({
+export const Route = createFileRoute("/superadmin/relatorios")({
   head: () => ({
     meta: [
       { title: "Relatórios — Encontre +" },

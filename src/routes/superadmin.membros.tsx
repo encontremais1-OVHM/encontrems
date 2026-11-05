@@ -34,7 +34,7 @@ import { membersQuery, type MemberFilters } from "@/lib/api/endpoints";
 import { isApiConfigured } from "@/lib/config";
 import { formatDate, formatNumber, formatPhone } from "@/lib/format";
 
-export const Route = createFileRoute("/admin/membros")({
+export const Route = createFileRoute("/superadmin/membros")({
   head: () => ({
     meta: [
       { title: "Membros — Encontre +" },

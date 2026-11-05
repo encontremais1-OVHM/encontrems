@@ -3,7 +3,7 @@ import { Activity } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/whatsapp")({
+export const Route = createFileRoute("/superadmin/whatsapp")({
   head: () => ({
     meta: [
       { title: "Integração WhatsApp — Encontre +" },

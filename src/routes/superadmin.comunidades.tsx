@@ -3,7 +3,7 @@ import { UsersRound } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/comunidades")({
+export const Route = createFileRoute("/superadmin/comunidades")({
   head: () => ({
     meta: [
       { title: "Comunidades — Encontre +" },

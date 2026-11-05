@@ -3,7 +3,7 @@ import { Bell } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/notificacoes")({
+export const Route = createFileRoute("/superadmin/notificacoes")({
   head: () => ({
     meta: [
       { title: "Notificações — Encontre +" },

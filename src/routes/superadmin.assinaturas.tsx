@@ -3,7 +3,7 @@ import { RefreshCcw } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/assinaturas")({
+export const Route = createFileRoute("/superadmin/assinaturas")({
   head: () => ({
     meta: [
       { title: "Assinaturas — Encontre +" },

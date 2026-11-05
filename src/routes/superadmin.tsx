@@ -2,7 +2,7 @@ import { Outlet, createFileRoute } from "@tanstack/react-router";
 
 import { AdminShell } from "@/components/layout/AdminShell";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/superadmin")({
   head: () => ({
     meta: [
       { title: "Painel administrativo — Encontre +" },

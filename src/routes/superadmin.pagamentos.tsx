@@ -3,7 +3,7 @@ import { CreditCard } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/pagamentos")({
+export const Route = createFileRoute("/superadmin/pagamentos")({
   head: () => ({
     meta: [
       { title: "Pagamentos — Encontre +" },

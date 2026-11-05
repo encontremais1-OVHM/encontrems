@@ -3,7 +3,7 @@ import { Settings } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/configuracoes")({
+export const Route = createFileRoute("/superadmin/configuracoes")({
   head: () => ({
     meta: [
       { title: "Configurações — Encontre +" },
