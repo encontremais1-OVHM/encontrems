@@ -25,7 +25,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 <Link
                   to={item.to}
                   onClick={onNavigate}
-                  activeOptions={{ exact: item.to === "/admin" }}
+                  activeOptions={{ exact: item.to === "/superadmin" }}
                   className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
                 >
                   <item.icon className="size-4 shrink-0 opacity-70 group-data-[status=active]:opacity-100" />
@@ -75,7 +75,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     }
     clearToken();
     setHasSession(false);
-    navigate({ to: "/entrar" });
+    navigate({ to: "/superadmin/entrar" });
   }
 
   return (
@@ -83,7 +83,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <div className="flex h-16 items-center border-b border-sidebar-border px-5">
-          <Link to="/admin" aria-label="Encontre + — Dashboard">
+          <Link to="/superadmin" aria-label="Encontre + — Dashboard">
             <Logo className="h-7" />
           </Link>
         </div>
@@ -125,7 +125,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
               </Button>
             ) : (
               <Button variant="outline" size="sm" asChild>
-                <Link to="/entrar">
+                <Link to="/superadmin/entrar">
                   <LogIn />
                   <span className="hidden sm:inline">Iniciar sessão</span>
                 </Link>

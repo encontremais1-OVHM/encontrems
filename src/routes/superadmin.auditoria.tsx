@@ -3,7 +3,7 @@ import { FileClock } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/auditoria")({
+export const Route = createFileRoute("/superadmin/auditoria")({
   head: () => ({
     meta: [
       { title: "Auditoria — Encontre +" },

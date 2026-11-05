@@ -3,7 +3,7 @@ import { UserPlus } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/inscricoes")({
+export const Route = createFileRoute("/superadmin/inscricoes")({
   head: () => ({
     meta: [
       { title: "Inscrições — Encontre +" },

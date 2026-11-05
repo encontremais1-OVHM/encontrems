@@ -3,7 +3,7 @@ import { MessageCircle } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/grupos")({
+export const Route = createFileRoute("/superadmin/grupos")({
   head: () => ({
     meta: [
       { title: "Grupos WhatsApp — Encontre +" },

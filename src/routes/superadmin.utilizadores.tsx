@@ -3,7 +3,7 @@ import { UserCog } from "lucide-react";
 
 import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
 
-export const Route = createFileRoute("/admin/utilizadores")({
+export const Route = createFileRoute("/superadmin/utilizadores")({
   head: () => ({
     meta: [
       { title: "Utilizadores — Encontre +" },

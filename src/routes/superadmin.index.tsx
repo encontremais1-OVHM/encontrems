@@ -39,7 +39,7 @@ import { isApiConfigured } from "@/lib/config";
 import { formatDate, formatKz, formatNumber } from "@/lib/format";
 import { DEFAULT_PLAN } from "@/lib/plan-defaults";
 
-export const Route = createFileRoute("/admin/")({
+export const Route = createFileRoute("/superadmin/")({
   head: () => ({
     meta: [
       { title: "Dashboard — Encontre +" },

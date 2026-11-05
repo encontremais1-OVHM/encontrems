@@ -10,229 +10,229 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as EntrarRouteImport } from './routes/entrar'
-import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as AdminAcessosRouteImport } from './routes/admin.acessos'
-import { Route as AdminAssinaturasRouteImport } from './routes/admin.assinaturas'
-import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
-import { Route as AdminComunidadesRouteImport } from './routes/admin.comunidades'
-import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
-import { Route as AdminGruposRouteImport } from './routes/admin.grupos'
-import { Route as AdminInscricoesRouteImport } from './routes/admin.inscricoes'
-import { Route as AdminMembrosRouteImport } from './routes/admin.membros'
-import { Route as AdminNotificacoesRouteImport } from './routes/admin.notificacoes'
-import { Route as AdminPagamentosRouteImport } from './routes/admin.pagamentos'
-import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
-import { Route as AdminUtilizadoresRouteImport } from './routes/admin.utilizadores'
-import { Route as AdminWhatsappRouteImport } from './routes/admin.whatsapp'
+import { Route as SuperadminRouteImport } from './routes/superadmin'
+import { Route as SuperadminIndexRouteImport } from './routes/superadmin.index'
+import { Route as SuperadminAcessosRouteImport } from './routes/superadmin.acessos'
+import { Route as SuperadminAssinaturasRouteImport } from './routes/superadmin.assinaturas'
+import { Route as SuperadminAuditoriaRouteImport } from './routes/superadmin.auditoria'
+import { Route as SuperadminComunidadesRouteImport } from './routes/superadmin.comunidades'
+import { Route as SuperadminConfiguracoesRouteImport } from './routes/superadmin.configuracoes'
+import { Route as SuperadminGruposRouteImport } from './routes/superadmin.grupos'
+import { Route as SuperadminInscricoesRouteImport } from './routes/superadmin.inscricoes'
+import { Route as SuperadminMembrosRouteImport } from './routes/superadmin.membros'
+import { Route as SuperadminNotificacoesRouteImport } from './routes/superadmin.notificacoes'
+import { Route as SuperadminPagamentosRouteImport } from './routes/superadmin.pagamentos'
+import { Route as SuperadminRelatoriosRouteImport } from './routes/superadmin.relatorios'
+import { Route as SuperadminUtilizadoresRouteImport } from './routes/superadmin.utilizadores'
+import { Route as SuperadminWhatsappRouteImport } from './routes/superadmin.whatsapp'
+import { Route as SuperadminEntrarRouteImport } from './routes/superadmin_.entrar'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const SuperadminRoute = SuperadminRouteImport.update({
+  id: '/superadmin',
+  path: '/superadmin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const EntrarRoute = EntrarRouteImport.update({
-  id: '/entrar',
-  path: '/entrar',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
+const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminAcessosRoute = AdminAcessosRouteImport.update({
+const SuperadminAcessosRoute = SuperadminAcessosRouteImport.update({
   id: '/acessos',
   path: '/acessos',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminAssinaturasRoute = AdminAssinaturasRouteImport.update({
+const SuperadminAssinaturasRoute = SuperadminAssinaturasRouteImport.update({
   id: '/assinaturas',
   path: '/assinaturas',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminAuditoriaRoute = AdminAuditoriaRouteImport.update({
+const SuperadminAuditoriaRoute = SuperadminAuditoriaRouteImport.update({
   id: '/auditoria',
   path: '/auditoria',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminComunidadesRoute = AdminComunidadesRouteImport.update({
+const SuperadminComunidadesRoute = SuperadminComunidadesRouteImport.update({
   id: '/comunidades',
   path: '/comunidades',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
+const SuperadminConfiguracoesRoute = SuperadminConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminGruposRoute = AdminGruposRouteImport.update({
+const SuperadminGruposRoute = SuperadminGruposRouteImport.update({
   id: '/grupos',
   path: '/grupos',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminInscricoesRoute = AdminInscricoesRouteImport.update({
+const SuperadminInscricoesRoute = SuperadminInscricoesRouteImport.update({
   id: '/inscricoes',
   path: '/inscricoes',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminMembrosRoute = AdminMembrosRouteImport.update({
+const SuperadminMembrosRoute = SuperadminMembrosRouteImport.update({
   id: '/membros',
   path: '/membros',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminNotificacoesRoute = AdminNotificacoesRouteImport.update({
+const SuperadminNotificacoesRoute = SuperadminNotificacoesRouteImport.update({
   id: '/notificacoes',
   path: '/notificacoes',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminPagamentosRoute = AdminPagamentosRouteImport.update({
+const SuperadminPagamentosRoute = SuperadminPagamentosRouteImport.update({
   id: '/pagamentos',
   path: '/pagamentos',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminRelatoriosRoute = AdminRelatoriosRouteImport.update({
+const SuperadminRelatoriosRoute = SuperadminRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminUtilizadoresRoute = AdminUtilizadoresRouteImport.update({
+const SuperadminUtilizadoresRoute = SuperadminUtilizadoresRouteImport.update({
   id: '/utilizadores',
   path: '/utilizadores',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
 } as any)
-const AdminWhatsappRoute = AdminWhatsappRouteImport.update({
+const SuperadminWhatsappRoute = SuperadminWhatsappRouteImport.update({
   id: '/whatsapp',
   path: '/whatsapp',
-  getParentRoute: () => AdminRoute,
+  getParentRoute: () => SuperadminRoute,
+} as any)
+const SuperadminEntrarRoute = SuperadminEntrarRouteImport.update({
+  id: '/superadmin_/entrar',
+  path: '/superadmin/entrar',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteWithChildren
-  '/entrar': typeof EntrarRoute
-  '/admin/acessos': typeof AdminAcessosRoute
-  '/admin/assinaturas': typeof AdminAssinaturasRoute
-  '/admin/auditoria': typeof AdminAuditoriaRoute
-  '/admin/comunidades': typeof AdminComunidadesRoute
-  '/admin/configuracoes': typeof AdminConfiguracoesRoute
-  '/admin/grupos': typeof AdminGruposRoute
-  '/admin/inscricoes': typeof AdminInscricoesRoute
-  '/admin/membros': typeof AdminMembrosRoute
-  '/admin/notificacoes': typeof AdminNotificacoesRoute
-  '/admin/pagamentos': typeof AdminPagamentosRoute
-  '/admin/relatorios': typeof AdminRelatoriosRoute
-  '/admin/utilizadores': typeof AdminUtilizadoresRoute
-  '/admin/whatsapp': typeof AdminWhatsappRoute
-  '/admin/': typeof AdminIndexRoute
+  '/superadmin': typeof SuperadminRouteWithChildren
+  '/superadmin/acessos': typeof SuperadminAcessosRoute
+  '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
+  '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
+  '/superadmin/comunidades': typeof SuperadminComunidadesRoute
+  '/superadmin/configuracoes': typeof SuperadminConfiguracoesRoute
+  '/superadmin/grupos': typeof SuperadminGruposRoute
+  '/superadmin/inscricoes': typeof SuperadminInscricoesRoute
+  '/superadmin/membros': typeof SuperadminMembrosRoute
+  '/superadmin/notificacoes': typeof SuperadminNotificacoesRoute
+  '/superadmin/pagamentos': typeof SuperadminPagamentosRoute
+  '/superadmin/relatorios': typeof SuperadminRelatoriosRoute
+  '/superadmin/utilizadores': typeof SuperadminUtilizadoresRoute
+  '/superadmin/whatsapp': typeof SuperadminWhatsappRoute
+  '/superadmin/entrar': typeof SuperadminEntrarRoute
+  '/superadmin/': typeof SuperadminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/entrar': typeof EntrarRoute
-  '/admin/acessos': typeof AdminAcessosRoute
-  '/admin/assinaturas': typeof AdminAssinaturasRoute
-  '/admin/auditoria': typeof AdminAuditoriaRoute
-  '/admin/comunidades': typeof AdminComunidadesRoute
-  '/admin/configuracoes': typeof AdminConfiguracoesRoute
-  '/admin/grupos': typeof AdminGruposRoute
-  '/admin/inscricoes': typeof AdminInscricoesRoute
-  '/admin/membros': typeof AdminMembrosRoute
-  '/admin/notificacoes': typeof AdminNotificacoesRoute
-  '/admin/pagamentos': typeof AdminPagamentosRoute
-  '/admin/relatorios': typeof AdminRelatoriosRoute
-  '/admin/utilizadores': typeof AdminUtilizadoresRoute
-  '/admin/whatsapp': typeof AdminWhatsappRoute
-  '/admin': typeof AdminIndexRoute
+  '/superadmin/acessos': typeof SuperadminAcessosRoute
+  '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
+  '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
+  '/superadmin/comunidades': typeof SuperadminComunidadesRoute
+  '/superadmin/configuracoes': typeof SuperadminConfiguracoesRoute
+  '/superadmin/grupos': typeof SuperadminGruposRoute
+  '/superadmin/inscricoes': typeof SuperadminInscricoesRoute
+  '/superadmin/membros': typeof SuperadminMembrosRoute
+  '/superadmin/notificacoes': typeof SuperadminNotificacoesRoute
+  '/superadmin/pagamentos': typeof SuperadminPagamentosRoute
+  '/superadmin/relatorios': typeof SuperadminRelatoriosRoute
+  '/superadmin/utilizadores': typeof SuperadminUtilizadoresRoute
+  '/superadmin/whatsapp': typeof SuperadminWhatsappRoute
+  '/superadmin/entrar': typeof SuperadminEntrarRoute
+  '/superadmin': typeof SuperadminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteWithChildren
-  '/entrar': typeof EntrarRoute
-  '/admin/acessos': typeof AdminAcessosRoute
-  '/admin/assinaturas': typeof AdminAssinaturasRoute
-  '/admin/auditoria': typeof AdminAuditoriaRoute
-  '/admin/comunidades': typeof AdminComunidadesRoute
-  '/admin/configuracoes': typeof AdminConfiguracoesRoute
-  '/admin/grupos': typeof AdminGruposRoute
-  '/admin/inscricoes': typeof AdminInscricoesRoute
-  '/admin/membros': typeof AdminMembrosRoute
-  '/admin/notificacoes': typeof AdminNotificacoesRoute
-  '/admin/pagamentos': typeof AdminPagamentosRoute
-  '/admin/relatorios': typeof AdminRelatoriosRoute
-  '/admin/utilizadores': typeof AdminUtilizadoresRoute
-  '/admin/whatsapp': typeof AdminWhatsappRoute
-  '/admin/': typeof AdminIndexRoute
+  '/superadmin': typeof SuperadminRouteWithChildren
+  '/superadmin/acessos': typeof SuperadminAcessosRoute
+  '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
+  '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
+  '/superadmin/comunidades': typeof SuperadminComunidadesRoute
+  '/superadmin/configuracoes': typeof SuperadminConfiguracoesRoute
+  '/superadmin/grupos': typeof SuperadminGruposRoute
+  '/superadmin/inscricoes': typeof SuperadminInscricoesRoute
+  '/superadmin/membros': typeof SuperadminMembrosRoute
+  '/superadmin/notificacoes': typeof SuperadminNotificacoesRoute
+  '/superadmin/pagamentos': typeof SuperadminPagamentosRoute
+  '/superadmin/relatorios': typeof SuperadminRelatoriosRoute
+  '/superadmin/utilizadores': typeof SuperadminUtilizadoresRoute
+  '/superadmin/whatsapp': typeof SuperadminWhatsappRoute
+  '/superadmin_/entrar': typeof SuperadminEntrarRoute
+  '/superadmin/': typeof SuperadminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/admin'
-    | '/entrar'
-    | '/admin/acessos'
-    | '/admin/assinaturas'
-    | '/admin/auditoria'
-    | '/admin/comunidades'
-    | '/admin/configuracoes'
-    | '/admin/grupos'
-    | '/admin/inscricoes'
-    | '/admin/membros'
-    | '/admin/notificacoes'
-    | '/admin/pagamentos'
-    | '/admin/relatorios'
-    | '/admin/utilizadores'
-    | '/admin/whatsapp'
-    | '/admin/'
+    | '/superadmin'
+    | '/superadmin/acessos'
+    | '/superadmin/assinaturas'
+    | '/superadmin/auditoria'
+    | '/superadmin/comunidades'
+    | '/superadmin/configuracoes'
+    | '/superadmin/grupos'
+    | '/superadmin/inscricoes'
+    | '/superadmin/membros'
+    | '/superadmin/notificacoes'
+    | '/superadmin/pagamentos'
+    | '/superadmin/relatorios'
+    | '/superadmin/utilizadores'
+    | '/superadmin/whatsapp'
+    | '/superadmin/entrar'
+    | '/superadmin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/entrar'
-    | '/admin/acessos'
-    | '/admin/assinaturas'
-    | '/admin/auditoria'
-    | '/admin/comunidades'
-    | '/admin/configuracoes'
-    | '/admin/grupos'
-    | '/admin/inscricoes'
-    | '/admin/membros'
-    | '/admin/notificacoes'
-    | '/admin/pagamentos'
-    | '/admin/relatorios'
-    | '/admin/utilizadores'
-    | '/admin/whatsapp'
-    | '/admin'
+    | '/superadmin/acessos'
+    | '/superadmin/assinaturas'
+    | '/superadmin/auditoria'
+    | '/superadmin/comunidades'
+    | '/superadmin/configuracoes'
+    | '/superadmin/grupos'
+    | '/superadmin/inscricoes'
+    | '/superadmin/membros'
+    | '/superadmin/notificacoes'
+    | '/superadmin/pagamentos'
+    | '/superadmin/relatorios'
+    | '/superadmin/utilizadores'
+    | '/superadmin/whatsapp'
+    | '/superadmin/entrar'
+    | '/superadmin'
   id:
     | '__root__'
     | '/'
-    | '/admin'
-    | '/entrar'
-    | '/admin/acessos'
-    | '/admin/assinaturas'
-    | '/admin/auditoria'
-    | '/admin/comunidades'
-    | '/admin/configuracoes'
-    | '/admin/grupos'
-    | '/admin/inscricoes'
-    | '/admin/membros'
-    | '/admin/notificacoes'
-    | '/admin/pagamentos'
-    | '/admin/relatorios'
-    | '/admin/utilizadores'
-    | '/admin/whatsapp'
-    | '/admin/'
+    | '/superadmin'
+    | '/superadmin/acessos'
+    | '/superadmin/assinaturas'
+    | '/superadmin/auditoria'
+    | '/superadmin/comunidades'
+    | '/superadmin/configuracoes'
+    | '/superadmin/grupos'
+    | '/superadmin/inscricoes'
+    | '/superadmin/membros'
+    | '/superadmin/notificacoes'
+    | '/superadmin/pagamentos'
+    | '/superadmin/relatorios'
+    | '/superadmin/utilizadores'
+    | '/superadmin/whatsapp'
+    | '/superadmin_/entrar'
+    | '/superadmin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRouteWithChildren
-  EntrarRoute: typeof EntrarRoute
+  SuperadminRoute: typeof SuperadminRouteWithChildren
+  SuperadminEntrarRoute: typeof SuperadminEntrarRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -244,161 +244,163 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+    '/superadmin': {
+      id: '/superadmin'
+      path: '/superadmin'
+      fullPath: '/superadmin'
+      preLoaderRoute: typeof SuperadminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/entrar': {
-      id: '/entrar'
-      path: '/entrar'
-      fullPath: '/entrar'
-      preLoaderRoute: typeof EntrarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/': {
-      id: '/admin/'
+    '/superadmin/': {
+      id: '/superadmin/'
       path: '/'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/'
+      preLoaderRoute: typeof SuperadminIndexRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/acessos': {
-      id: '/admin/acessos'
+    '/superadmin/acessos': {
+      id: '/superadmin/acessos'
       path: '/acessos'
-      fullPath: '/admin/acessos'
-      preLoaderRoute: typeof AdminAcessosRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/acessos'
+      preLoaderRoute: typeof SuperadminAcessosRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/assinaturas': {
-      id: '/admin/assinaturas'
+    '/superadmin/assinaturas': {
+      id: '/superadmin/assinaturas'
       path: '/assinaturas'
-      fullPath: '/admin/assinaturas'
-      preLoaderRoute: typeof AdminAssinaturasRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/assinaturas'
+      preLoaderRoute: typeof SuperadminAssinaturasRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/auditoria': {
-      id: '/admin/auditoria'
+    '/superadmin/auditoria': {
+      id: '/superadmin/auditoria'
       path: '/auditoria'
-      fullPath: '/admin/auditoria'
-      preLoaderRoute: typeof AdminAuditoriaRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/auditoria'
+      preLoaderRoute: typeof SuperadminAuditoriaRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/comunidades': {
-      id: '/admin/comunidades'
+    '/superadmin/comunidades': {
+      id: '/superadmin/comunidades'
       path: '/comunidades'
-      fullPath: '/admin/comunidades'
-      preLoaderRoute: typeof AdminComunidadesRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/comunidades'
+      preLoaderRoute: typeof SuperadminComunidadesRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/configuracoes': {
-      id: '/admin/configuracoes'
+    '/superadmin/configuracoes': {
+      id: '/superadmin/configuracoes'
       path: '/configuracoes'
-      fullPath: '/admin/configuracoes'
-      preLoaderRoute: typeof AdminConfiguracoesRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/configuracoes'
+      preLoaderRoute: typeof SuperadminConfiguracoesRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/grupos': {
-      id: '/admin/grupos'
+    '/superadmin/grupos': {
+      id: '/superadmin/grupos'
       path: '/grupos'
-      fullPath: '/admin/grupos'
-      preLoaderRoute: typeof AdminGruposRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/grupos'
+      preLoaderRoute: typeof SuperadminGruposRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/inscricoes': {
-      id: '/admin/inscricoes'
+    '/superadmin/inscricoes': {
+      id: '/superadmin/inscricoes'
       path: '/inscricoes'
-      fullPath: '/admin/inscricoes'
-      preLoaderRoute: typeof AdminInscricoesRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/inscricoes'
+      preLoaderRoute: typeof SuperadminInscricoesRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/membros': {
-      id: '/admin/membros'
+    '/superadmin/membros': {
+      id: '/superadmin/membros'
       path: '/membros'
-      fullPath: '/admin/membros'
-      preLoaderRoute: typeof AdminMembrosRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/membros'
+      preLoaderRoute: typeof SuperadminMembrosRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/notificacoes': {
-      id: '/admin/notificacoes'
+    '/superadmin/notificacoes': {
+      id: '/superadmin/notificacoes'
       path: '/notificacoes'
-      fullPath: '/admin/notificacoes'
-      preLoaderRoute: typeof AdminNotificacoesRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/notificacoes'
+      preLoaderRoute: typeof SuperadminNotificacoesRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/pagamentos': {
-      id: '/admin/pagamentos'
+    '/superadmin/pagamentos': {
+      id: '/superadmin/pagamentos'
       path: '/pagamentos'
-      fullPath: '/admin/pagamentos'
-      preLoaderRoute: typeof AdminPagamentosRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/pagamentos'
+      preLoaderRoute: typeof SuperadminPagamentosRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/relatorios': {
-      id: '/admin/relatorios'
+    '/superadmin/relatorios': {
+      id: '/superadmin/relatorios'
       path: '/relatorios'
-      fullPath: '/admin/relatorios'
-      preLoaderRoute: typeof AdminRelatoriosRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/relatorios'
+      preLoaderRoute: typeof SuperadminRelatoriosRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/utilizadores': {
-      id: '/admin/utilizadores'
+    '/superadmin/utilizadores': {
+      id: '/superadmin/utilizadores'
       path: '/utilizadores'
-      fullPath: '/admin/utilizadores'
-      preLoaderRoute: typeof AdminUtilizadoresRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/utilizadores'
+      preLoaderRoute: typeof SuperadminUtilizadoresRouteImport
+      parentRoute: typeof SuperadminRoute
     }
-    '/admin/whatsapp': {
-      id: '/admin/whatsapp'
+    '/superadmin/whatsapp': {
+      id: '/superadmin/whatsapp'
       path: '/whatsapp'
-      fullPath: '/admin/whatsapp'
-      preLoaderRoute: typeof AdminWhatsappRouteImport
-      parentRoute: typeof AdminRoute
+      fullPath: '/superadmin/whatsapp'
+      preLoaderRoute: typeof SuperadminWhatsappRouteImport
+      parentRoute: typeof SuperadminRoute
+    }
+    '/superadmin_/entrar': {
+      id: '/superadmin_/entrar'
+      path: '/superadmin/entrar'
+      fullPath: '/superadmin/entrar'
+      preLoaderRoute: typeof SuperadminEntrarRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface AdminRouteChildren {
-  AdminAcessosRoute: typeof AdminAcessosRoute
-  AdminAssinaturasRoute: typeof AdminAssinaturasRoute
-  AdminAuditoriaRoute: typeof AdminAuditoriaRoute
-  AdminComunidadesRoute: typeof AdminComunidadesRoute
-  AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
-  AdminGruposRoute: typeof AdminGruposRoute
-  AdminInscricoesRoute: typeof AdminInscricoesRoute
-  AdminMembrosRoute: typeof AdminMembrosRoute
-  AdminNotificacoesRoute: typeof AdminNotificacoesRoute
-  AdminPagamentosRoute: typeof AdminPagamentosRoute
-  AdminRelatoriosRoute: typeof AdminRelatoriosRoute
-  AdminUtilizadoresRoute: typeof AdminUtilizadoresRoute
-  AdminWhatsappRoute: typeof AdminWhatsappRoute
-  AdminIndexRoute: typeof AdminIndexRoute
+interface SuperadminRouteChildren {
+  SuperadminAcessosRoute: typeof SuperadminAcessosRoute
+  SuperadminAssinaturasRoute: typeof SuperadminAssinaturasRoute
+  SuperadminAuditoriaRoute: typeof SuperadminAuditoriaRoute
+  SuperadminComunidadesRoute: typeof SuperadminComunidadesRoute
+  SuperadminConfiguracoesRoute: typeof SuperadminConfiguracoesRoute
+  SuperadminGruposRoute: typeof SuperadminGruposRoute
+  SuperadminInscricoesRoute: typeof SuperadminInscricoesRoute
+  SuperadminMembrosRoute: typeof SuperadminMembrosRoute
+  SuperadminNotificacoesRoute: typeof SuperadminNotificacoesRoute
+  SuperadminPagamentosRoute: typeof SuperadminPagamentosRoute
+  SuperadminRelatoriosRoute: typeof SuperadminRelatoriosRoute
+  SuperadminUtilizadoresRoute: typeof SuperadminUtilizadoresRoute
+  SuperadminWhatsappRoute: typeof SuperadminWhatsappRoute
+  SuperadminIndexRoute: typeof SuperadminIndexRoute
 }
 
-const AdminRouteChildren: AdminRouteChildren = {
-  AdminAcessosRoute: AdminAcessosRoute,
-  AdminAssinaturasRoute: AdminAssinaturasRoute,
-  AdminAuditoriaRoute: AdminAuditoriaRoute,
-  AdminComunidadesRoute: AdminComunidadesRoute,
-  AdminConfiguracoesRoute: AdminConfiguracoesRoute,
-  AdminGruposRoute: AdminGruposRoute,
-  AdminInscricoesRoute: AdminInscricoesRoute,
-  AdminMembrosRoute: AdminMembrosRoute,
-  AdminNotificacoesRoute: AdminNotificacoesRoute,
-  AdminPagamentosRoute: AdminPagamentosRoute,
-  AdminRelatoriosRoute: AdminRelatoriosRoute,
-  AdminUtilizadoresRoute: AdminUtilizadoresRoute,
-  AdminWhatsappRoute: AdminWhatsappRoute,
-  AdminIndexRoute: AdminIndexRoute,
+const SuperadminRouteChildren: SuperadminRouteChildren = {
+  SuperadminAcessosRoute: SuperadminAcessosRoute,
+  SuperadminAssinaturasRoute: SuperadminAssinaturasRoute,
+  SuperadminAuditoriaRoute: SuperadminAuditoriaRoute,
+  SuperadminComunidadesRoute: SuperadminComunidadesRoute,
+  SuperadminConfiguracoesRoute: SuperadminConfiguracoesRoute,
+  SuperadminGruposRoute: SuperadminGruposRoute,
+  SuperadminInscricoesRoute: SuperadminInscricoesRoute,
+  SuperadminMembrosRoute: SuperadminMembrosRoute,
+  SuperadminNotificacoesRoute: SuperadminNotificacoesRoute,
+  SuperadminPagamentosRoute: SuperadminPagamentosRoute,
+  SuperadminRelatoriosRoute: SuperadminRelatoriosRoute,
+  SuperadminUtilizadoresRoute: SuperadminUtilizadoresRoute,
+  SuperadminWhatsappRoute: SuperadminWhatsappRoute,
+  SuperadminIndexRoute: SuperadminIndexRoute,
 }
 
-const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+const SuperadminRouteWithChildren = SuperadminRoute._addFileChildren(
+  SuperadminRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRouteWithChildren,
-  EntrarRoute: EntrarRoute,
+  SuperadminRoute: SuperadminRouteWithChildren,
+  SuperadminEntrarRoute: SuperadminEntrarRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -13,7 +13,7 @@ import { login } from "@/lib/api/endpoints";
 import { setToken } from "@/lib/auth-storage";
 import { isApiConfigured } from "@/lib/config";
 
-export const Route = createFileRoute("/entrar")({
+export const Route = createFileRoute("/superadmin_/entrar")({
   head: () => ({
     meta: [
       { title: "Iniciar sessão — Encontre +" },
