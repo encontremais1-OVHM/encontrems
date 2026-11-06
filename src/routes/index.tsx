@@ -52,7 +52,7 @@ export const Route = createFileRoute("/")({
 function usePlan() {
   const plan = useQuery(publicPlanQuery());
   return {
-    initialPriceKz: plan.data?.initial_price_kz ?? DEFAULT_PLAN.initialPriceKz,
+    initialPriceKz: 0,
     renewalPriceKz: plan.data?.renewal_price_kz ?? DEFAULT_PLAN.renewalPriceKz,
     durationDays: plan.data?.duration_days ?? DEFAULT_PLAN.durationDays,
     warningDay: plan.data?.warning_day ?? DEFAULT_PLAN.warningDay,
@@ -101,8 +101,8 @@ function Home() {
     { icon: LayoutGrid, title: "Seleccione o subgrupo", text: "Cada comunidade tem subgrupos por actividade ou interesse." },
     {
       icon: CreditCard,
-      title: "Pague a adesão",
-      text: `${formatKz(plan.initialPriceKz)} incluem a adesão e os primeiros ${plan.durationDays} dias.`,
+      title: "Acesso gratuito",
+      text: `Os primeiros ${plan.durationDays} dias são gratuitos. Depois, renove por ${formatKz(plan.renewalPriceKz)} a cada ${plan.durationDays} dias.`,
     },
     { icon: MessageCircle, title: "Entre no WhatsApp", text: "Após a confirmação, recebe o acesso à comunidade e ao subgrupo." },
   ];
@@ -138,8 +138,8 @@ function Home() {
               </div>
 
               <p className="mt-6 text-sm text-muted-foreground">
-                Adesão de <span className="font-bold text-foreground tabular">{formatKz(plan.initialPriceKz)}</span> com{" "}
-                {plan.durationDays} dias de acesso incluídos.
+                Entrada gratuita com <span className="font-bold text-foreground tabular">{plan.durationDays} dias de acesso.</span> Depois, renovação de{" "}
+                <span className="font-bold text-foreground tabular">{formatKz(plan.renewalPriceKz)}</span> a cada {plan.durationDays} dias.
               </p>
             </div>
 
@@ -152,10 +152,10 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="order-2 overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10 lg:order-1">
               <img
-                src="/images/encontre-quem-somos.jpg"
+                src="/images/encontre-quem-somos.svg"
                 alt="Pessoas de diferentes origens unem as mãos num gesto de colaboração."
-                width={678}
-                height={452}
+                width={1200}
+                height={900}
                 loading="lazy"
                 className="h-full max-h-[430px] w-full object-cover"
               />
@@ -214,10 +214,10 @@ function Home() {
             </div>
             <div className="overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-cadeia.jpg"
+                src="/images/encontre-cadeia.svg"
                 alt="Mãos unidas representam uma cadeia de apoio e colaboração."
-                width={468}
-                height={298}
+                width={1200}
+                height={900}
                 loading="lazy"
                 className="h-full max-h-[390px] w-full object-cover"
               />
@@ -230,10 +230,10 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-lugar-para-todos.jpg"
+                src="/images/encontre-lugar-para-todos.svg"
                 alt="Uma comunidade diversa de pessoas que se encontram e trocam oportunidades."
-                width={740}
-                height={740}
+                width={1200}
+                height={900}
                 loading="lazy"
                 className="aspect-square max-h-[460px] w-full object-cover"
               />
@@ -346,9 +346,9 @@ function Home() {
             <div className="rounded-2xl border bg-card p-6 shadow-card sm:p-8">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Adesão</p>
               <p className="mt-3 font-display text-5xl font-black tabular text-foreground">
-                {formatKz(plan.initialPriceKz)}
+                "Gratuita"
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">inclui os primeiros {plan.durationDays} dias</p>
+              <p className="mt-1 text-sm text-muted-foreground">primeiros {plan.durationDays} dias sem custos</p>
               <div className="my-6 h-px bg-border" />
               <p className="text-sm text-foreground">
                 Renovação: <span className="font-bold tabular">{formatKz(plan.renewalPriceKz)}</span> a cada{" "}
