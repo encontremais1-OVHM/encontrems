@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LogIn, LogOut, Menu } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -46,7 +47,7 @@ function SidebarFooter() {
       <div className="rounded-lg bg-background p-3 ring-1 ring-sidebar-border">
         <div className="h-1 w-10 rounded-full bg-gradient-brand" />
         <p className="mt-2 text-xs font-semibold text-foreground">Comunidade Encontre +</p>
-        <p className="text-[0.7rem] text-muted-foreground">Em parceria com Oswaldina · Angola</p>
+        <p className="text-[0.7rem] text-muted-foreground">Acesso Super Admin · Angola</p>
       </div>
     </div>
   );
@@ -56,6 +57,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
@@ -74,6 +76,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
       // Token is cleared locally regardless of the API response.
     }
     clearToken();
+    queryClient.removeQueries({ queryKey: ["auth"] });
+    queryClient.removeQueries({ queryKey: ["admin"] });
     setHasSession(false);
     navigate({ to: "/superadmin/entrar" });
   }

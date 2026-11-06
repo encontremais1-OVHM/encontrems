@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, UsersRound } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
 
 import { EmptyState } from "@/components/app/EmptyState";
@@ -489,7 +489,7 @@ function Field({
   label: string;
   hint?: string;
   error?: string | undefined;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
