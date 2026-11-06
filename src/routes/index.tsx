@@ -1,6 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, BellRing, Clock3, CreditCard, LayoutGrid, MessageCircle, ShieldCheck, UsersRound } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  BellRing,
+  BriefcaseBusiness,
+  Building2,
+  Clock3,
+  CreditCard,
+  Handshake,
+  LayoutGrid,
+  Lightbulb,
+  MessageCircle,
+  Search,
+  ShieldCheck,
+  Store,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 
 import { CommunityCatalog } from "@/components/public/CommunityCatalog";
 import { HeroColumns } from "@/components/public/HeroColumns";
@@ -18,12 +35,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Comunidades privadas no WhatsApp onde pessoas, profissionais, empreendedores e negócios em Angola se encontram, partilham oportunidades e criam conexões.",
+          "Uma cadeia comunitária em Angola que conecta pessoas, profissionais e negócios para partilhar oportunidades, colaborar e crescer em conjunto.",
       },
       { property: "og:title", content: "Encontre + — Comunidade. Oportunidade. Conexão." },
       {
         property: "og:description",
-        content: "Comunidades e subgrupos no WhatsApp para pessoas, profissionais e negócios em Angola.",
+        content: "Conectamos quem procura com quem pode oferecer. Juntos, criamos mais oportunidades.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -43,6 +60,39 @@ function usePlan() {
     graceDays: plan.data?.grace_days ?? DEFAULT_PLAN.graceDays,
   };
 }
+
+const audiences = [
+  {
+    icon: Search,
+    title: "Pessoas à procura de emprego",
+    text: "Encontre oportunidades de trabalho, contactos e caminhos para crescer profissionalmente.",
+  },
+  {
+    icon: Building2,
+    title: "Empresas",
+    text: "Descubra trabalhadores, profissionais qualificados e parceiros para as necessidades do seu negócio.",
+  },
+  {
+    icon: Lightbulb,
+    title: "Empreendedores",
+    text: "Partilhe ideias, encontre potenciais sócios e transforme projectos em iniciativas concretas.",
+  },
+  {
+    icon: Store,
+    title: "Negócios",
+    text: "Ligue-se a clientes, fornecedores, investidores e novas oportunidades comerciais.",
+  },
+  {
+    icon: UserRound,
+    title: "Profissionais independentes",
+    text: "Apresente os seus serviços, conquiste clientes e crie relações profissionais.",
+  },
+  {
+    icon: Handshake,
+    title: "Projectos e iniciativas",
+    text: "Encontre colaboradores, parceiros e pessoas que possam ajudar a fazer acontecer.",
+  },
+];
 
 function Home() {
   const plan = usePlan();
@@ -70,18 +120,15 @@ function Home() {
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
               <p className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs font-semibold text-muted-foreground shadow-card">
                 <span className="size-1.5 rounded-full bg-brand-green" />
-                Comunidades privadas no WhatsApp · Angola
+                Comunidade. Oportunidade. Conexão.
               </p>
-              <h1 className="mt-6 text-[2.6rem] font-black leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-[4.25rem]">
-                Comunidade.
-                <br />
-                <span className="text-gradient-brand">Oportunidade.</span>
-                <br />
-                Conexão.
+              <h1 className="mt-6 max-w-2xl text-[2.45rem] font-black leading-[1.04] tracking-tight text-foreground sm:text-5xl lg:text-[3.7rem]">
+                Tem algo para oferecer?
+                <span className="mt-1 block text-gradient-brand">Está à procura de uma oportunidade?</span>
+                <span className="mt-1 block">Comece aqui.</span>
               </h1>
-              <p className="mt-6 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
-                O espaço onde pessoas, profissionais, empreendedores e negócios se encontram para partilhar
-                oportunidades e criar ligações que fazem crescer.
+              <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+                Encontre clientes, parceiros, fornecedores, profissionais e oportunidades de emprego num ecossistema criado para conectar quem procura com quem pode oferecer.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -91,7 +138,7 @@ function Home() {
                   </Link>
                 </Button>
                 <Button size="lg" variant="outline" asChild className="h-12 px-7 text-base font-semibold">
-                  <Link to="/inscricao">Inscrever-me</Link>
+                  <Link to="/inscricao">Fazer parte da comunidade</Link>
                 </Button>
               </div>
 
@@ -102,6 +149,151 @@ function Home() {
             </div>
 
             <HeroColumns className="h-[360px] sm:h-[480px] lg:h-[600px]" />
+          </div>
+        </section>
+
+        {/* Quem somos */}
+        <section id="quem-somos" className="border-t bg-muted/30" aria-labelledby="quem-somos-title">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
+            <div className="order-2 overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10 lg:order-1">
+              <img
+                src="/images/encontre-quem-somos.jpg"
+                alt="Pessoas de diferentes origens unem as mãos num gesto de colaboração."
+                width={678}
+                height={452}
+                loading="lazy"
+                className="h-full max-h-[430px] w-full object-cover"
+              />
+            </div>
+            <div className="order-1 lg:order-2">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-teal">A nossa identidade</p>
+              <h2 id="quem-somos-title" className="mt-3 text-3xl font-black leading-tight text-foreground sm:text-4xl">
+                Quem somos?
+              </h2>
+              <div className="mt-5 space-y-4 text-base leading-relaxed text-muted-foreground">
+                <p>
+                  A <strong className="text-foreground">Encontre +</strong> é uma cadeia comunitária onde o apoio financeiro, as oportunidades e o crescimento acontecem através da colaboração entre os próprios membros.
+                </p>
+                <p>
+                  Nascemos em Angola com um propósito: organizar e conectar pessoas e negócios que acreditam que juntos podem crescer mais.
+                </p>
+                <p>
+                  Criamos conexões, estabelecemos regras e construímos uma estrutura que incentiva a cooperação, a circulação de oportunidades e o fortalecimento dos negócios locais.
+                </p>
+                <p>
+                  Na Encontre +, acreditamos que uma comunidade forte é construída por pessoas que participam, contribuem e apoiam umas às outras.
+                </p>
+              </div>
+              <p className="mt-6 border-l-4 border-brand-teal pl-4 text-lg font-extrabold text-foreground">
+                Nós criamos a estrutura. Os membros fazem a cadeia girar.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* O que fazemos */}
+        <section id="o-que-fazemos" aria-labelledby="o-que-fazemos-title">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-teal">A nossa missão</p>
+              <h2 id="o-que-fazemos-title" className="mt-3 text-3xl font-black leading-tight text-foreground sm:text-4xl">
+                O que fazemos?
+              </h2>
+              <div className="mt-5 space-y-4 text-base leading-relaxed text-muted-foreground">
+                <p>
+                  A Encontre + é um ecossistema comunitário que nasceu em Angola para responder a um desafio: os recursos financeiros circulam pouco dentro do nosso próprio mercado, enquanto muitos negócios e profissionais continuam à procura de oportunidades para crescer.
+                </p>
+                <p>
+                  Para mudar essa realidade, criamos a <strong className="text-foreground">Cadeia Comunitária</strong>: um modelo que incentiva pessoas e negócios a apoiarem-se mutuamente, partilharem oportunidades e fortalecerem a economia dentro da comunidade.
+                </p>
+                <p>
+                  Não somos apenas um grupo de descontos. Somos uma rede de conexões, colaboração e oportunidades.
+                </p>
+                <p>
+                  Acreditamos que, quando o conhecimento circula, surgem novas oportunidades. Quando os negócios se apoiam, fortalecem-se. E quando os recursos circulam dentro da comunidade, todos têm mais possibilidades de crescer.
+                </p>
+              </div>
+              <p className="mt-6 text-lg font-extrabold text-foreground">
+                O crescimento de um pode tornar-se uma oportunidade para muitos.
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10">
+              <img
+                src="/images/encontre-cadeia.jpg"
+                alt="Mãos unidas representam uma cadeia de apoio e colaboração."
+                width={468}
+                height={298}
+                loading="lazy"
+                className="h-full max-h-[390px] w-full object-cover"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Junte-se à comunidade */}
+        <section id="junte-se" className="border-y bg-muted/30" aria-labelledby="junte-se-title">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
+            <div className="overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10">
+              <img
+                src="/images/encontre-lugar-para-todos.jpg"
+                alt="Uma comunidade diversa de pessoas que se encontram e trocam oportunidades."
+                width={740}
+                height={740}
+                loading="lazy"
+                className="aspect-square max-h-[460px] w-full object-cover"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-teal">Junte-se à nossa comunidade</p>
+              <h2 id="junte-se-title" className="mt-3 text-3xl font-black leading-tight text-foreground sm:text-4xl">
+                Encontre quem pode crescer consigo.
+              </h2>
+              <p className="mt-3 text-lg font-semibold text-foreground">Parceiros, sócios e novas oportunidades.</p>
+              <div className="mt-5 space-y-4 text-base leading-relaxed text-muted-foreground">
+                <p>Ninguém precisa de crescer sozinho.</p>
+                <p>
+                  Na Encontre +, pode encontrar pessoas com objectivos, ideias e interesses em comum. Crie parcerias, encontre potenciais sócios e transforme conexões em oportunidades reais.
+                </p>
+                <p>
+                  Partilhe experiências, conhecimentos, serviços e oportunidades de negócio. Conheça pessoas, descubra possibilidades e construa relações que podem abrir portas para o seu futuro.
+                </p>
+              </div>
+              <p className="mt-6 text-lg font-extrabold text-foreground">
+                Juntos, podemos chegar mais longe do que chegaríamos sozinhos.
+              </p>
+              <Button asChild size="lg" className="mt-7 h-12 px-7 font-semibold">
+                <Link to="/inscricao">Juntar-me à Encontre + <ArrowUpRight /></Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* Para quem é */}
+        <section id="para-quem" aria-labelledby="para-quem-title">
+          <div className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-teal">Um lugar para todos</p>
+              <h2 id="para-quem-title" className="mt-3 text-3xl font-black text-foreground sm:text-4xl">
+                Para quem é esta comunidade?
+              </h2>
+              <p className="mt-4 text-muted-foreground">
+                A Encontre + foi criada para conectar pessoas e organizações com diferentes objectivos, mas com algo em comum: a vontade de encontrar oportunidades e crescer.
+              </p>
+            </div>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {audiences.map((audience) => (
+                <article key={audience.title} className="rounded-2xl border bg-card p-6 shadow-card transition-transform hover:-translate-y-1">
+                  <span className="flex size-11 items-center justify-center rounded-xl bg-info-soft text-primary">
+                    <audience.icon className="size-5" />
+                  </span>
+                  <h3 className="mt-4 font-display text-lg font-extrabold text-foreground">{audience.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{audience.text}</p>
+                </article>
+              ))}
+            </div>
+            <p className="mx-auto mt-9 max-w-3xl text-center text-base font-semibold leading-relaxed text-foreground">
+              Se tem algo para oferecer ou procura algo que possa ajudar o seu crescimento, existe espaço para si na Encontre +.
+            </p>
           </div>
         </section>
 
@@ -209,11 +401,11 @@ function Home() {
           </div>
         </section>
 
-        {/* CTA */}
+        {/* CTA final */}
         <section className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
           <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-primary px-6 py-10 text-primary-foreground sm:px-10 md:flex-row md:items-center">
             <div>
-              <h2 className="text-2xl font-black sm:text-3xl">Pronto para encontrar mais?</h2>
+              <h2 className="text-2xl font-black sm:text-3xl">Faça parte da cadeia. Encontre mais oportunidades.</h2>
               <p className="mt-2 text-sm text-primary-foreground/80">
                 Já se inscreveu?{" "}
                 <Link to="/inscricao/estado" className="font-semibold underline underline-offset-4">
