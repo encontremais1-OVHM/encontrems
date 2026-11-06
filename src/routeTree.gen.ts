@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ComunidadesRouteImport } from './routes/comunidades'
 import { Route as SuperadminRouteImport } from './routes/superadmin'
 import { Route as SuperadminIndexRouteImport } from './routes/superadmin.index'
 import { Route as SuperadminAcessosRouteImport } from './routes/superadmin.acessos'
@@ -30,6 +31,11 @@ import { Route as SuperadminEntrarRouteImport } from './routes/superadmin_.entra
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComunidadesRoute = ComunidadesRouteImport.update({
+  id: '/comunidades',
+  path: '/comunidades',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SuperadminRoute = SuperadminRouteImport.update({
@@ -115,6 +121,7 @@ const SuperadminEntrarRoute = SuperadminEntrarRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/comunidades': typeof ComunidadesRoute
   '/superadmin': typeof SuperadminRouteWithChildren
   '/superadmin/acessos': typeof SuperadminAcessosRoute
   '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/comunidades': typeof ComunidadesRoute
   '/superadmin/acessos': typeof SuperadminAcessosRoute
   '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
   '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
@@ -153,6 +161,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/comunidades': typeof ComunidadesRoute
   '/superadmin': typeof SuperadminRouteWithChildren
   '/superadmin/acessos': typeof SuperadminAcessosRoute
   '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/comunidades'
     | '/superadmin'
     | '/superadmin/acessos'
     | '/superadmin/assinaturas'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/comunidades'
     | '/superadmin/acessos'
     | '/superadmin/assinaturas'
     | '/superadmin/auditoria'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/comunidades'
     | '/superadmin'
     | '/superadmin/acessos'
     | '/superadmin/assinaturas'
@@ -231,6 +243,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComunidadesRoute: typeof ComunidadesRoute
   SuperadminRoute: typeof SuperadminRouteWithChildren
   SuperadminEntrarRoute: typeof SuperadminEntrarRoute
 }
@@ -242,6 +255,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/comunidades': {
+      id: '/comunidades'
+      path: '/comunidades'
+      fullPath: '/comunidades'
+      preLoaderRoute: typeof ComunidadesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/superadmin': {
@@ -399,6 +419,7 @@ const SuperadminRouteWithChildren = SuperadminRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComunidadesRoute: ComunidadesRoute,
   SuperadminRoute: SuperadminRouteWithChildren,
   SuperadminEntrarRoute: SuperadminEntrarRoute,
 }
