@@ -4,7 +4,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   BellRing,
-  BriefcaseBusiness,
   Building2,
   Clock3,
   CreditCard,
