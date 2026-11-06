@@ -34,7 +34,7 @@ A Lovable exige o frontend na raiz do repositório. A separação de responsabil
 ```text
 encontre-plus/
 ├── src/                  Frontend (React, TanStack Router, Tailwind)
-│   ├── routes/           Páginas (público, /entrar, /admin/*)
+│   ├── routes/           Páginas (público, /comunidades, /inscricao, /superadmin/*)
 │   ├── components/       UI, layout, componentes de aplicação
 │   └── lib/api/          Cliente HTTP e contrato com o Laravel
 ├── backend/              Aplicação Laravel (Fase 2)
@@ -51,7 +51,7 @@ Valores monetários em `bigint` (Kz inteiros). Datas em `timestamptz`; cálculos
 | Tabela | Campos principais | Notas |
 |---|---|---|
 | organizations | id, name, slug, logo_path, timezone, currency | Raiz multi-comunidade |
-| communities | id, organization_id, name, slug, partner_name, is_primary, active | "Encontre +" + parceira Oswaldina |
+| communities | id, organization_id, name, slug, partner_name, is_primary, active | comunidades publicadas no catálogo público |
 | users | id, organization_id, name, email (único), password, role, active, last_login_at | Administradores: super_admin, gestor, suporte |
 | personal_access_tokens | — | Laravel Sanctum |
 | members | id, organization_id, full_name, whatsapp_e164, email, province, city, terms_accepted_at, marketing_consent, status, created_at | Único (organization_id, whatsapp_e164) |

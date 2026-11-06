@@ -38,3 +38,6 @@ use the editor.
 - Financial/subscription state is computed only by the backend; `src/lib/plan-defaults.ts` is display-only fallback copy.
 - Modules not yet built render `ModulePlaceholder` (features + API contract) instead of fake data or dead buttons.
 - WhatsApp/Bider and payment gateways sit behind replaceable adapters; never implement provider endpoints before the official docs are supplied.
+- The admin panel lives under `/superadmin/*` (login at `/superadmin/entrar`, file `superadmin_.entrar.tsx`) and renders only for `super_admin`; the Laravel API is the real gate (401/403 on `/admin/*`) — the client gate only avoids rendering the panel.
+- Public catalogue, sign-up and status pages read communities/subgroups from `/public/*` endpoints; hero tiles in `src/components/public/hero-groups.ts` are illustrative only and never stand in for catalogue data.
+- WhatsApp invite links are shown only via `inviteLinks()` in `src/lib/registration.ts` (payment confirmed + subscription active/grace + access active) — a second guard behind the backend.

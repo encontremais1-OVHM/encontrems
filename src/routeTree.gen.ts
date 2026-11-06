@@ -10,7 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ComunidadesRouteImport } from './routes/comunidades'
 import { Route as SuperadminRouteImport } from './routes/superadmin'
+import { Route as InscricaoIndexRouteImport } from './routes/inscricao.index'
+import { Route as InscricaoEstadoRouteImport } from './routes/inscricao.estado'
 import { Route as SuperadminIndexRouteImport } from './routes/superadmin.index'
 import { Route as SuperadminAcessosRouteImport } from './routes/superadmin.acessos'
 import { Route as SuperadminAssinaturasRouteImport } from './routes/superadmin.assinaturas'
@@ -32,9 +35,24 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ComunidadesRoute = ComunidadesRouteImport.update({
+  id: '/comunidades',
+  path: '/comunidades',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SuperadminRoute = SuperadminRouteImport.update({
   id: '/superadmin',
   path: '/superadmin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InscricaoIndexRoute = InscricaoIndexRouteImport.update({
+  id: '/inscricao/',
+  path: '/inscricao/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InscricaoEstadoRoute = InscricaoEstadoRouteImport.update({
+  id: '/inscricao/estado',
+  path: '/inscricao/estado',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
@@ -115,7 +133,9 @@ const SuperadminEntrarRoute = SuperadminEntrarRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/comunidades': typeof ComunidadesRoute
   '/superadmin': typeof SuperadminRouteWithChildren
+  '/inscricao/estado': typeof InscricaoEstadoRoute
   '/superadmin/acessos': typeof SuperadminAcessosRoute
   '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
   '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
@@ -130,10 +150,13 @@ export interface FileRoutesByFullPath {
   '/superadmin/utilizadores': typeof SuperadminUtilizadoresRoute
   '/superadmin/whatsapp': typeof SuperadminWhatsappRoute
   '/superadmin/entrar': typeof SuperadminEntrarRoute
+  '/inscricao/': typeof InscricaoIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/comunidades': typeof ComunidadesRoute
+  '/inscricao/estado': typeof InscricaoEstadoRoute
   '/superadmin/acessos': typeof SuperadminAcessosRoute
   '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
   '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
@@ -148,12 +171,15 @@ export interface FileRoutesByTo {
   '/superadmin/utilizadores': typeof SuperadminUtilizadoresRoute
   '/superadmin/whatsapp': typeof SuperadminWhatsappRoute
   '/superadmin/entrar': typeof SuperadminEntrarRoute
+  '/inscricao': typeof InscricaoIndexRoute
   '/superadmin': typeof SuperadminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/comunidades': typeof ComunidadesRoute
   '/superadmin': typeof SuperadminRouteWithChildren
+  '/inscricao/estado': typeof InscricaoEstadoRoute
   '/superadmin/acessos': typeof SuperadminAcessosRoute
   '/superadmin/assinaturas': typeof SuperadminAssinaturasRoute
   '/superadmin/auditoria': typeof SuperadminAuditoriaRoute
@@ -168,13 +194,16 @@ export interface FileRoutesById {
   '/superadmin/utilizadores': typeof SuperadminUtilizadoresRoute
   '/superadmin/whatsapp': typeof SuperadminWhatsappRoute
   '/superadmin_/entrar': typeof SuperadminEntrarRoute
+  '/inscricao/': typeof InscricaoIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/comunidades'
     | '/superadmin'
+    | '/inscricao/estado'
     | '/superadmin/acessos'
     | '/superadmin/assinaturas'
     | '/superadmin/auditoria'
@@ -189,10 +218,13 @@ export interface FileRouteTypes {
     | '/superadmin/utilizadores'
     | '/superadmin/whatsapp'
     | '/superadmin/entrar'
+    | '/inscricao/'
     | '/superadmin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/comunidades'
+    | '/inscricao/estado'
     | '/superadmin/acessos'
     | '/superadmin/assinaturas'
     | '/superadmin/auditoria'
@@ -207,11 +239,14 @@ export interface FileRouteTypes {
     | '/superadmin/utilizadores'
     | '/superadmin/whatsapp'
     | '/superadmin/entrar'
+    | '/inscricao'
     | '/superadmin'
   id:
     | '__root__'
     | '/'
+    | '/comunidades'
     | '/superadmin'
+    | '/inscricao/estado'
     | '/superadmin/acessos'
     | '/superadmin/assinaturas'
     | '/superadmin/auditoria'
@@ -226,13 +261,17 @@ export interface FileRouteTypes {
     | '/superadmin/utilizadores'
     | '/superadmin/whatsapp'
     | '/superadmin_/entrar'
+    | '/inscricao/'
     | '/superadmin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComunidadesRoute: typeof ComunidadesRoute
   SuperadminRoute: typeof SuperadminRouteWithChildren
+  InscricaoEstadoRoute: typeof InscricaoEstadoRoute
   SuperadminEntrarRoute: typeof SuperadminEntrarRoute
+  InscricaoIndexRoute: typeof InscricaoIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -244,11 +283,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/comunidades': {
+      id: '/comunidades'
+      path: '/comunidades'
+      fullPath: '/comunidades'
+      preLoaderRoute: typeof ComunidadesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/superadmin': {
       id: '/superadmin'
       path: '/superadmin'
       fullPath: '/superadmin'
       preLoaderRoute: typeof SuperadminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inscricao/': {
+      id: '/inscricao/'
+      path: '/inscricao'
+      fullPath: '/inscricao/'
+      preLoaderRoute: typeof InscricaoIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inscricao/estado': {
+      id: '/inscricao/estado'
+      path: '/inscricao/estado'
+      fullPath: '/inscricao/estado'
+      preLoaderRoute: typeof InscricaoEstadoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/superadmin/': {
@@ -399,8 +459,11 @@ const SuperadminRouteWithChildren = SuperadminRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComunidadesRoute: ComunidadesRoute,
   SuperadminRoute: SuperadminRouteWithChildren,
+  InscricaoEstadoRoute: InscricaoEstadoRoute,
   SuperadminEntrarRoute: SuperadminEntrarRoute,
+  InscricaoIndexRoute: InscricaoIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

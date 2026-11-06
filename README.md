@@ -1,6 +1,6 @@
 # Encontre +
 
-Plataforma de gestão da comunidade privada Encontre + (WhatsApp), em parceria com Oswaldina — Angola.
+Plataforma de gestão da comunidade privada Encontre + (WhatsApp) — Angola.
 **Comunidade, oportunidades e conexões.**
 
 ## Estrutura

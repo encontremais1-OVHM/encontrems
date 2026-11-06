@@ -11,7 +11,15 @@
 ## Fase 2 — Laravel + Supabase externo (bloqueado: aguarda aprovação do plano e credenciais do Supabase)
 - [ ] Estrutura Laravel em backend/, Sanctum, perfis
 - [ ] Migrations (plano para aprovação antes de executar)
-- [ ] Proteger /admin com sessão válida
+- [x] Painel movido para /superadmin com verificação de sessão Super Admin no frontend
+- [ ] Endpoint GET /auth/me e protecção Super Admin no Laravel
+
+## Actualização da página principal
+- [x] Cabeçalho novo sem "Área administrativa" nem parcerias
+- [x] Hero com três colunas animadas de grupos
+- [x] Catálogo público de comunidades (/comunidades) ligado à API
+- [x] Inscrição em passos (/inscricao) e consulta de estado (/inscricao/estado) ligadas à API
+- [ ] Endpoints /public/* no Laravel (aguarda Fase 2)
 
 ## Fase 3 — Inscrição, membros, pagamentos, assinaturas
 ## Fase 4 — Comunidades, subgrupos, controlo de acesso

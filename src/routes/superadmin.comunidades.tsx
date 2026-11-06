@@ -24,7 +24,7 @@ function ComunidadesPage() {
       title="Comunidades"
       description="Comunidade principal Encontre + e preparação para várias comunidades e influencers."
       phase={4}
-      features={["Comunidade principal e parceira (Oswaldina)", "Arquitetura multi-comunidade", "Planos e regras por comunidade", "Associação de subgrupos"]}
+      features={["Comunidade principal e comunidades adicionais", "Imagem, descrição e finalidade publicadas no catálogo público", "Planos e regras por comunidade", "Associação de subgrupos"]}
       endpoints={["GET /admin/communities", "POST /admin/communities", "PATCH /admin/communities/{id}"]}
     />
   );
