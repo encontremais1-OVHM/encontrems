@@ -234,7 +234,7 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-quem-somos.jpg"
+                src="/images/encontre-lugar-para-todos.jpg"
                 alt="Uma comunidade diversa de pessoas que se encontram e trocam oportunidades."
                 width={740}
                 height={740}
