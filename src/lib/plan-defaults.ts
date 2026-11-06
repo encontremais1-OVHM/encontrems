@@ -4,7 +4,7 @@
  * truth and all financial calculations happen in the backend.
  */
 export const DEFAULT_PLAN = {
-  initialPriceKz: 1000,
+  initialPriceKz: 0, // Free entry; renewal starts after the first 30 days.
   renewalPriceKz: 1000,
   durationDays: 30,
   warningDay: 27,
