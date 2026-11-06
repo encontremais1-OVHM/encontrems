@@ -152,7 +152,7 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="order-2 overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10 lg:order-1">
               <img
-                src="/images/encontre-quem-somos-hd.svg"
+                src="/images/encontre-quem-somos.jpg"
                 alt="Pessoas de diferentes origens unem as mãos num gesto de colaboração."
                 width={678}
                 height={452}
@@ -214,7 +214,7 @@ function Home() {
             </div>
             <div className="overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-cadeia-hd.svg"
+                src="/images/encontre-cadeia.jpg"
                 alt="Mãos unidas representam uma cadeia de apoio e colaboração."
                 width={468}
                 height={298}
@@ -230,7 +230,7 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-lugar-para-todos-hd.svg"
+                src="/images/encontre-lugar-para-todos.jpg"
                 alt="Uma comunidade diversa de pessoas que se encontram e trocam oportunidades."
                 width={740}
                 height={740}
