@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -10,19 +11,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { describeApiError } from "@/lib/api/client";
 import { login } from "@/lib/api/endpoints";
-import { setToken } from "@/lib/auth-storage";
+import { clearToken, setToken } from "@/lib/auth-storage";
 import { isApiConfigured } from "@/lib/config";
 
 export const Route = createFileRoute("/superadmin_/entrar")({
   head: () => ({
     meta: [
-      { title: "Iniciar sessão — Encontre +" },
-      { name: "description", content: "Acesso ao painel administrativo da comunidade Encontre +." },
-      { property: "og:title", content: "Iniciar sessão — Encontre +" },
-      { property: "og:description", content: "Acesso ao painel administrativo da comunidade Encontre +." },
+      { title: "Acesso Super Admin — Encontre +" },
+      { name: "description", content: "Área reservada ao Super Admin da Encontre +." },
+      { property: "og:title", content: "Acesso Super Admin — Encontre +" },
+      { property: "og:description", content: "Área reservada ao Super Admin da Encontre +." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "robots", content: "noindex" },
+      { name: "robots", content: "noindex, nofollow" },
     ],
   }),
   component: LoginPage,
@@ -35,6 +36,7 @@ const schema = z.object({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const configured = isApiConfigured();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -52,8 +54,14 @@ function LoginPage() {
     setSubmitting(true);
     try {
       const res = await login(parsed.data.email, parsed.data.password);
+      if (res.user.role !== "super_admin") {
+        clearToken();
+        setError("Acesso reservado a utilizadores com perfil Super Admin.");
+        return;
+      }
       setToken(res.token);
-      navigate({ to: "/admin" });
+      queryClient.setQueryData(["auth", "me"], { user: res.user });
+      navigate({ to: "/superadmin" });
     } catch (err) {
       setError(describeApiError(err));
     } finally {
@@ -68,9 +76,9 @@ function LoginPage() {
           <Link to="/" aria-label="Encontre + — Início">
             <Logo className="h-9" />
           </Link>
-          <h1 className="mt-10 text-2xl font-extrabold text-foreground">Painel administrativo</h1>
+          <h1 className="mt-10 text-2xl font-extrabold text-foreground">Acesso Super Admin</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Acesso reservado a Super Admin, Gestores e Suporte.
+            Área reservada. Apenas contas com perfil Super Admin podem entrar.
           </p>
 
           {!configured && (
@@ -111,10 +119,6 @@ function LoginPage() {
               Entrar
             </Button>
           </form>
-
-          <Link to="/admin" className="mt-6 inline-block text-xs font-medium text-muted-foreground hover:text-primary">
-            Ver pré-visualização do painel →
-          </Link>
         </div>
       </div>
 

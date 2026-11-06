@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2, ShieldAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { AdminShell } from "@/components/layout/AdminShell";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/superadmin")({
   component: SuperAdminLayout,
 });
 
-function FullScreen({ children }: { children: React.ReactNode }) {
+function FullScreen({ children }: { children: ReactNode }) {
   return <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">{children}</div>;
 }
 
