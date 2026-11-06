@@ -31,8 +31,8 @@ interface InscricaoSearch {
 
 export const Route = createFileRoute("/inscricao/")({
   validateSearch: (search: Record<string, unknown>): InscricaoSearch => ({
-    ...(typeof search.comunidade === "string" ? { comunidade: search.comunidade } : {}),
-    ...(typeof search.subgrupo === "string" ? { subgrupo: search.subgrupo } : {}),
+    ...(typeof search["comunidade"] === "string" ? { comunidade: search["comunidade"] } : {}),
+    ...(typeof search["subgrupo"] === "string" ? { subgrupo: search["subgrupo"] } : {}),
   }),
   head: () => ({
     meta: [

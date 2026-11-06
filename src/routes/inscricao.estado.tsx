@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/inscricao/estado")({
   validateSearch: (search: Record<string, unknown>): { ref?: string } =>
-    typeof search.ref === "string" ? { ref: search.ref } : {},
+    typeof search["ref"] === "string" ? { ref: search["ref"] } : {},
   head: () => ({
     meta: [
       { title: "Consultar inscrição — Encontre +" },
@@ -67,7 +67,7 @@ function StepIcon({ state }: { state: JourneyState }) {
 function EstadoPage() {
   const search = Route.useSearch();
   const configured = isApiConfigured();
-  const [reference, setReference] = useState(search.ref ?? "");
+  const [reference, setReference] = useState(search["ref"] ?? "");
   const [phone, setPhone] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ reference: string; whatsapp: string } | null>(null);
