@@ -117,10 +117,6 @@ function Home() {
           <div className="surface-grid pointer-events-none absolute inset-0 opacity-50" />
           <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-5 pb-14 pt-8 sm:pt-12 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:pb-20 lg:pt-10">
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
-              <p className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs font-semibold text-muted-foreground shadow-card">
-                <span className="size-1.5 rounded-full bg-brand-green" />
-                Comunidade. Oportunidade. Conexão.
-              </p>
               <h1 className="mt-6 max-w-2xl text-[2.45rem] font-black leading-[1.04] tracking-tight text-foreground sm:text-5xl lg:text-[3.7rem]">
                 Tem algo para oferecer?
                 <span className="mt-1 block text-gradient-brand">Está à procura de uma oportunidade?</span>
@@ -156,7 +152,7 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="order-2 overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10 lg:order-1">
               <img
-                src="/images/encontre-quem-somos.jpg"
+                src="/images/encontre-quem-somos-hd.svg"
                 alt="Pessoas de diferentes origens unem as mãos num gesto de colaboração."
                 width={678}
                 height={452}
@@ -218,7 +214,7 @@ function Home() {
             </div>
             <div className="overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-cadeia.jpg"
+                src="/images/encontre-cadeia-hd.svg"
                 alt="Mãos unidas representam uma cadeia de apoio e colaboração."
                 width={468}
                 height={298}
@@ -234,7 +230,7 @@ function Home() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div className="overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-lugar-para-todos.jpg"
+                src="/images/encontre-lugar-para-todos-hd.svg"
                 alt="Uma comunidade diversa de pessoas que se encontram e trocam oportunidades."
                 width={740}
                 height={740}
