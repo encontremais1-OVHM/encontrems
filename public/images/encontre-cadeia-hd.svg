@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1404" height="894" viewBox="0 0 1404 894" role="img" aria-label="Imagem da cadeia comunitária da secção O que fazemos">
+  <defs>
+    <filter id="photo-enhance" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+      <feColorMatrix type="saturate" values="1.08" result="colour"/>
+      <feGaussianBlur in="colour" stdDeviation="0.55" result="soft"/>
+      <feComposite in="colour" in2="soft" operator="arithmetic" k1="0" k2="1.22" k3="-0.22" k4="0"/>
+    </filter>
+  </defs>
+  <image href="/images/encontre-cadeia.jpg" xlink:href="/images/encontre-cadeia.jpg" width="1404" height="894" preserveAspectRatio="xMidYMid slice" filter="url(#photo-enhance)"/>
+</svg>
