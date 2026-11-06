@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1356" height="904" viewBox="0 0 1356 904" role="img" aria-label="Imagem de colaboração da secção Quem somos">
+  <defs>
+    <filter id="photo-enhance" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+      <feColorMatrix type="saturate" values="1.08" result="colour"/>
+      <feGaussianBlur in="colour" stdDeviation="0.55" result="soft"/>
+      <feComposite in="colour" in2="soft" operator="arithmetic" k1="0" k2="1.22" k3="-0.22" k4="0"/>
+    </filter>
+  </defs>
+  <image href="/images/encontre-quem-somos.jpg" xlink:href="/images/encontre-quem-somos.jpg" width="1356" height="904" preserveAspectRatio="xMidYMid slice" filter="url(#photo-enhance)"/>
+</svg>
