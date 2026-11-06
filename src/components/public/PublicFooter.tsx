@@ -13,14 +13,23 @@ export function PublicFooter() {
             interesse, em Angola.
           </p>
         </div>
-        <nav aria-label="Rodapé" className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:justify-self-end">
-          <Link to="/comunidades" className="font-medium text-foreground hover:text-primary">
+        <nav aria-label="Rodapé" className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:justify-self-end">
+          <a href="#quem-somos" className="font-medium text-foreground transition-colors hover:text-primary">
+            Quem somos
+          </a>
+          <a href="#o-que-fazemos" className="font-medium text-foreground transition-colors hover:text-primary">
+            O que fazemos
+          </a>
+          <a href="#junte-se" className="font-medium text-foreground transition-colors hover:text-primary">
+            Junte-se à nossa comunidade
+          </a>
+          <Link to="/comunidades" className="font-medium text-foreground transition-colors hover:text-primary">
             Explorar comunidades
           </Link>
-          <Link to="/inscricao" className="font-medium text-foreground hover:text-primary">
+          <Link to="/inscricao" className="font-medium text-foreground transition-colors hover:text-primary">
             Inscrever-me
           </Link>
-          <Link to="/inscricao/estado" className="font-medium text-foreground hover:text-primary">
+          <Link to="/inscricao/estado" className="font-medium text-foreground transition-colors hover:text-primary">
             Consultar inscrição
           </Link>
         </nav>
