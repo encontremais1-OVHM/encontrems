@@ -286,6 +286,81 @@ async function adminUpdateCommunity(communityId, body, user) {
   return { status: 200, body: { message: "Comunidade atualizada.", data: { ...current, ...patch } } };
 }
 
+
+async function adminRemoveCommunity(communityId, user) {
+  if (!isUuid(communityId)) return { status: 422, body: { message: "Identificador de comunidade inválido." } };
+  const rows = await sb("communities?select=id,name,status&id=eq." + communityId + "&limit=1");
+  const community = rows[0];
+  if (!community) return { status: 404, body: { message: "Comunidade não encontrada." } };
+
+  const [subscriptions, groups, connections] = await Promise.all([
+    sb("subscriptions?select=id&community_id=eq." + communityId + "&limit=1"),
+    sb("whatsapp_groups?select=id&community_id=eq." + communityId),
+    sb("whatsapp_connections?select=id&community_id=eq." + communityId),
+  ]);
+  if (subscriptions.length) return { status: 409, body: { message: "Esta comunidade já tem subscrições ou histórico financeiro associado. Para proteger os registos, desative-a em vez de a eliminar." } };
+
+  const groupIds = groups.map((group) => group.id);
+  if (groupIds.length) {
+    const filter = groupIds.join(",");
+    const [memberships, operations] = await Promise.all([
+      sb("group_memberships?select=id&whatsapp_group_id=in.(" + filter + ")&limit=1"),
+      sb("access_operations?select=id&whatsapp_group_id=in.(" + filter + ")&limit=1"),
+    ]);
+    if (memberships.length || operations.length) return { status: 409, body: { message: "Esta comunidade tem participações ou operações de acesso associadas aos grupos. Os registos históricos foram preservados; desative a comunidade em vez de a eliminar." } };
+    await sb("whatsapp_groups?id=in.(" + filter + ")", { method: "DELETE", headers: { Prefer: "return=minimal" } });
+  }
+
+  // The Baileys connection is shared platform-wide. Transfer its ownership
+  // instead of disconnecting the shared WhatsApp session.
+  if (connections.length) {
+    const others = await sb("communities?select=id&id=neq." + communityId + "&order=created_at.asc&limit=1");
+    if (others[0]) {
+      await sb("whatsapp_connections?id=in.(" + connections.map((row) => row.id).join(",") + ")", {
+        method: "PATCH", body: JSON.stringify({ community_id: others[0].id, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" },
+      });
+    } else {
+      await sb("whatsapp_connections?id=in.(" + connections.map((row) => row.id).join(",") + ")", { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    }
+  }
+
+  await sb("plans?community_id=eq." + communityId, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+  await sb("communities?id=eq." + communityId, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+  await writeAudit(user, "community.deleted", "community", communityId, community, { deleted: true, groups_deleted: groupIds.length });
+  return { status: 200, body: { message: "Comunidade removida da plataforma. A sessão WhatsApp partilhada foi preservada." } };
+}
+
+async function adminRemoveGroup(groupId, user) {
+  if (!isUuid(groupId)) return { status: 422, body: { message: "Identificador de grupo inválido." } };
+  const rows = await sb("whatsapp_groups?select=id,name,community_id,group_type,external_group_id,linked_parent_id,is_active,sync_status&id=eq." + groupId + "&limit=1");
+  const group = rows[0];
+  if (!group) return { status: 404, body: { message: "Grupo não encontrado." } };
+  if (group.sync_status === "removed") return { status: 200, body: { message: "Este elemento já está removido da plataforma." } };
+
+  if (group.group_type === "community") {
+    const children = await sb("whatsapp_groups?select=id,name&community_id=eq." + group.community_id + "&linked_parent_id=eq." + encodeURIComponent(group.external_group_id) + "&sync_status=neq.removed&limit=1");
+    if (children.length) return { status: 409, body: { message: "Antes de remover a Comunidade WhatsApp, remova primeiro os grupos internos associados." } };
+    await sb("communities?id=eq." + group.community_id, { method: "PATCH", body: JSON.stringify({ status: "inactive", updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+  }
+
+  const patch = { is_active: false, sync_status: "removed", updated_at: iso(new Date()) };
+  await sb("whatsapp_groups?id=eq." + groupId, { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } });
+  await writeAudit(user, "whatsapp_group.removed", "whatsapp_group", groupId, group, patch);
+  return { status: 200, body: { message: "Elemento removido da plataforma. O grupo original e os membros no WhatsApp não foram apagados." } };
+}
+
+async function adminRestoreGroup(groupId, user) {
+  if (!isUuid(groupId)) return { status: 422, body: { message: "Identificador de grupo inválido." } };
+  const rows = await sb("whatsapp_groups?select=id,name,community_id,group_type,sync_status&id=eq." + groupId + "&limit=1");
+  const group = rows[0];
+  if (!group) return { status: 404, body: { message: "Grupo não encontrado." } };
+  if (group.sync_status !== "removed") return { status: 409, body: { message: "Este elemento não está removido." } };
+  const patch = { is_active: false, sync_status: "synced", updated_at: iso(new Date()) };
+  await sb("whatsapp_groups?id=eq." + groupId, { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } });
+  await writeAudit(user, "whatsapp_group.restored", "whatsapp_group", groupId, group, patch);
+  return { status: 200, body: { message: "Elemento restaurado. Ative-o novamente quando quiser disponibilizá-lo nas inscrições." } };
+}
+
 async function adminUpdateGroup(groupId, body, user) {
   if (!isUuid(groupId)) return { status: 422, body: { message: "Identificador de grupo inválido." } };
   const rows = await sb("whatsapp_groups?select=id,community_id,name,group_type,is_active,external_group_id,linked_parent_id&id=eq." + groupId + "&limit=1");
@@ -460,7 +535,7 @@ async function confirmRenewalPayment(paymentId) {
     body:JSON.stringify({status:"paid",paid_at:iso(now),verified_at:iso(now),rejection_reason:null,updated_at:iso(now)}),
     headers:{Prefer:"return=minimal"},
   });
-  const communityGroups=await sb("whatsapp_groups?select=id&community_id=eq."+sub.community_id);
+  const communityGroups=await sb("whatsapp_groups?select=id&community_id=eq."+sub.community_id+"&is_active=eq.true");
   const communityGroupIds=communityGroups.map((group)=>group.id);
   const memberships=communityGroupIds.length
     ? await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq."+member.id+"&whatsapp_group_id=in.("+communityGroupIds.join(",")+")")
@@ -522,7 +597,8 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   const connectionId = await ensureConnection(communityId, "connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
-  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
+  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
+  if (existingContainer[0]?.sync_status === "removed") throw new Error("Esta Comunidade WhatsApp foi removida da plataforma. Restaure-a na lista de elementos removidos antes de sincronizar novamente.");
   if (existingContainer[0] && existingContainer[0].community_id !== communityId) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
   const containerRows = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
     method: "POST",
@@ -542,7 +618,8 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   });
   groupsImported++;
   for (const group of source.subgroups || []) {
-    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    if (existingRows[0]?.sync_status === "removed") continue;
     if (existingRows[0] && existingRows[0].community_id !== communityId) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
     let inviteLink = null;
     try { inviteLink = (await bridge("/groups/" + encodeURIComponent(group.id) + "/invite-link")).invite_link || null; } catch { /* optional; requires admin role */ }
@@ -624,6 +701,10 @@ export default async (request) => {
       const result = await adminUpdateCommunity(communityAction[1], body, user);
       return json(result.status, result.body);
     }
+    if (communityAction && method === "DELETE") {
+      const result = await adminRemoveCommunity(communityAction[1], user);
+      return json(result.status, result.body);
+    }
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
     const resourceMatch = path.match(/^\/admin\/resources\/(subscriptions|audit|communities|access|registrations|notifications|plans|users|reports)$/);
     if (resourceMatch && method === "GET") return json(200,await adminResource(resourceMatch[1]));
@@ -671,6 +752,16 @@ export default async (request) => {
         }).filter(Boolean),
         participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
       }))});
+    }
+    const groupRestore = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/restore$/i);
+    if (groupRestore && method === "POST") {
+      const result = await adminRestoreGroup(groupRestore[1], user);
+      return json(result.status, result.body);
+    }
+    const groupDelete = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})$/i);
+    if (groupDelete && method === "DELETE") {
+      const result = await adminRemoveGroup(groupDelete[1], user);
+      return json(result.status, result.body);
     }
     const groupSettings = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/settings$/i);
     if (groupSettings && method === "PATCH") {
