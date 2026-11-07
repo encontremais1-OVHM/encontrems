@@ -99,7 +99,7 @@ async function adminDashboard() {
   const now = Date.now();
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   const active = subscriptions.filter((s) => s.status === "active" && (!s.expires_at || new Date(s.expires_at).getTime() > now)).length;
-  const grace = subscriptions.filter((s) => s.status === "grace_period" || (s.status === "active" && s.expires_at && new Date(s.expires_at).getTime() <= now && (!s.grace_ends_at || new Date(s.grace_ends_at).getTime() >= now))).length;
+  const grace = subscriptions.filter((s) => (s.status === "grace_period" || (s.status === "active" && s.expires_at && new Date(s.expires_at).getTime() <= now)) && (!s.grace_ends_at || new Date(s.grace_ends_at).getTime() >= now)).length;
   const expired = subscriptions.filter((s) => s.status === "expired" || (s.grace_ends_at && new Date(s.grace_ends_at).getTime() < now)).length;
   const dueSoon = subscriptions.filter((s) => s.expires_at && new Date(s.expires_at).getTime() >= now && new Date(s.expires_at).getTime() <= now + 7 * 86400000).length;
   const paid = payments.filter((p) => p.status === "paid");
