@@ -96,6 +96,7 @@ export interface PublicSubgroup {
   slug: string;
   name: string;
   description: string | null;
+  image_url: string | null;
 }
 
 export interface PublicCommunity {
