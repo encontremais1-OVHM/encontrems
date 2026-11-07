@@ -419,7 +419,11 @@ async function confirmRenewalPayment(paymentId) {
     body:JSON.stringify({status:"paid",paid_at:iso(now),verified_at:iso(now),rejection_reason:null,updated_at:iso(now)}),
     headers:{Prefer:"return=minimal"},
   });
-  const memberships=await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq."+member.id);
+  const communityGroups=await sb("whatsapp_groups?select=id&community_id=eq."+sub.community_id);
+  const communityGroupIds=communityGroups.map((group)=>group.id);
+  const memberships=communityGroupIds.length
+    ? await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq."+member.id+"&whatsapp_group_id=in.("+communityGroupIds.join(",")+")")
+    : [];
   const phone=digits(member.phone_e164 || member.phone);
   let waConnected=false;
   try { waConnected=(await bridge("/status")).connected===true; } catch {}
