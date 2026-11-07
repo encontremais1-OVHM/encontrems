@@ -18,7 +18,7 @@ type WhatsAppStatus = {
   last_error: string | null;
   phone: string | null;
 };
-type Group = { id: string; name: string; description: string | null; sync_status: string; participants: number; external_group_id: string };
+type Group = { id: string; name: string; description: string | null; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
 
 export const Route = createFileRoute("/superadmin/whatsapp")({
   head: () => ({ meta: [{ title: "Integração WhatsApp — Encontre +" }, { name: "description", content: "Conecte o WhatsApp, importe grupos e sincronize os participantes da comunidade." }] }),
@@ -152,7 +152,7 @@ function WhatsappPage() {
               <span className="flex size-9 items-center justify-center rounded-lg bg-muted"><Users className="size-4" /></span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-foreground">{group.name}</p>
-                <p className="text-xs text-muted-foreground">{group.participants} contactos · {group.sync_status === "synced" ? "Sincronizado" : "Pendente"}</p>
+                <p className="text-xs text-muted-foreground">{group.participants_count} contactos · {group.sync_status === "synced" ? "Sincronizado" : "Pendente"}</p>
               </div>
               <Badge variant={group.is_active ? "success" : "neutral"}>{group.is_active ? "Activo" : "Inactivo"}</Badge>
             </div>)}
