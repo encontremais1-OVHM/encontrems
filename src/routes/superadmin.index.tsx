@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlarmClock,
   BadgeCheck,
@@ -66,6 +66,7 @@ function Dashboard() {
       <PageHeader
         title="Dashboard"
         description="Visão geral da comunidade Encontre +: membros, assinaturas, pagamentos e acessos aos grupos WhatsApp."
+        actions={<Button asChild><Link to="/superadmin/whatsapp"><MessageCircle className="mr-2 size-4" /> Ligar WhatsApp</Link></Button>}
       />
 
       <ApiNotConfiguredNotice />
