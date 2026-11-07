@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -9,10 +8,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { describeApiError } from "@/lib/api/client";
-import { login } from "@/lib/api/endpoints";
-import { clearToken, setToken } from "@/lib/auth-storage";
-import { isApiConfigured } from "@/lib/config";
+import { isSupabaseConfigured } from "@/lib/config";
+import {
+  isEncontreSuperAdmin,
+  signInWithPassword,
+  signOutSupabase,
+} from "@/lib/supabase-auth";
 
 export const Route = createFileRoute("/superadmin_/entrar")({
   head: () => ({
@@ -36,9 +37,8 @@ const schema = z.object({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const configured = isApiConfigured();
-  const [email, setEmail] = useState("");
+  const configured = isSupabaseConfigured();
+  const [email, setEmail] = useState("hgconnect1@gmail.com");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -51,19 +51,18 @@ function LoginPage() {
       setError(parsed.error.issues[0]?.message ?? "Dados inválidos.");
       return;
     }
+
     setSubmitting(true);
     try {
-      const res = await login(parsed.data.email, parsed.data.password);
-      if (res.user.role !== "super_admin") {
-        clearToken();
-        setError("Acesso reservado a utilizadores com perfil Super Admin.");
+      const user = await signInWithPassword(parsed.data.email, parsed.data.password);
+      if (!isEncontreSuperAdmin(user)) {
+        await signOutSupabase();
+        setError("Esta conta não está autorizada como Super Admin da Encontre+.");
         return;
       }
-      setToken(res.token);
-      queryClient.setQueryData(["auth", "me"], { user: res.user });
-      navigate({ to: "/superadmin" });
+      navigate({ to: "/superadmin", replace: true });
     } catch (err) {
-      setError(describeApiError(err));
+      setError(err instanceof Error ? err.message : "Não foi possível iniciar sessão.");
     } finally {
       setSubmitting(false);
     }
@@ -78,14 +77,14 @@ function LoginPage() {
           </Link>
           <h1 className="mt-10 text-2xl font-extrabold text-foreground">Acesso Super Admin</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Área reservada. Apenas contas com perfil Super Admin podem entrar.
+            Área reservada. Apenas a conta proprietária autorizada pode entrar.
           </p>
 
           {!configured && (
             <Alert className="mt-6 border-primary/20 bg-info-soft">
               <AlertDescription className="text-muted-foreground">
-                O backend Laravel ainda não está ligado. O início de sessão ficará disponível quando a
-                API for publicada e configurada.
+                Falta configurar VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nas variáveis de
+                ambiente do projeto. Nenhum deploy foi realizado.
               </AlertDescription>
             </Alert>
           )}
@@ -96,7 +95,7 @@ function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                autoComplete="email"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={!configured || submitting}
