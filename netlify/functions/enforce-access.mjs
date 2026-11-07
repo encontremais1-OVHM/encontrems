@@ -108,7 +108,7 @@ async function processPendingAdditions(now, nowIso) {
       await bridge(group.group_type === "community" ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants/add" : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants/add", { phone });
       await db("group_memberships?id=eq." + membership.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "joined", joined_at: nowIso, removed_at: null, last_synced_at: nowIso, updated_at: nowIso }),
+        body: JSON.stringify({ status: "joined", external_participant_id: phone + "@s.whatsapp.net", joined_at: nowIso, removed_at: null, last_synced_at: nowIso, updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       await db("access_operations?id=eq." + operation.id, {
