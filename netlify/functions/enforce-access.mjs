@@ -60,9 +60,12 @@ export default async (_request) => {
   }
 
   for (const subscription of expired) {
+    const communityGroups = await db("whatsapp_groups?select=id&community_id=eq." + subscription.community_id);
+    const communityGroupIds = communityGroups.map((group) => group.id);
+    if (!communityGroupIds.length) continue;
     const memberships = await db(
       "group_memberships?select=id,member_id,whatsapp_group_id,external_participant_id,status&member_id=eq." +
-      subscription.member_id + "&status=in.(joined,removal_pending)",
+      subscription.member_id + "&whatsapp_group_id=in.(" + communityGroupIds.join(",") + ")&status=in.(joined,removal_pending)",
     );
 
     for (const membership of memberships) {
