@@ -242,7 +242,7 @@ export default async (request) => {
     if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
     if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
 
-    const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET");
+    const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET") || (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST");
     const user = await requireSuperAdmin(request);
     if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
 
@@ -332,29 +332,64 @@ export default async (request) => {
       }
       return json(201,{reference:subscriptionId,status:"approved",payment:{reference:subscriptionId,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
     }
+    if (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST") {
+      const reference = path.slice("/public/registrations/".length).replace(/\/renewal$/, "");
+      const body = await request.json().catch(() => ({}));
+      const phone = digits(body.whatsapp);
+      if (!isUuid(reference) || !/^\d{8,15}$/.test(phone)) return json(404,{message:"Inscrição não encontrada."});
+      const subs = await sb("subscriptions?select=id,member_id,community_id,plan_id,expires_at,status&id=eq."+reference+"&limit=1");
+      const sub = subs[0];
+      if (!sub) return json(404,{message:"Inscrição não encontrada."});
+      const members = await sb("members?select=id,full_name,phone_e164,phone&id=eq."+sub.member_id+"&limit=1");
+      const member = members[0];
+      if (!member || digits(member.phone_e164 || member.phone) !== phone) return json(404,{message:"Inscrição não encontrada."});
+      const plans = await sb("plans?select=renewal_price,duration_days,grace_days&id=eq."+sub.plan_id+"&limit=1");
+      const plan = plans[0];
+      if (!plan || Number(plan.renewal_price) !== 1000) return json(409,{message:"O preço de renovação não está configurado para 1.000 Kz."});
+      const pending = await sb("payments?select=id,payment_reference,amount,status,created_at&subscription_id=eq."+sub.id+"&payment_type=eq.renewal&status=in.(pending,under_review,initiated)&order=created_at.desc&limit=1");
+      if (pending[0]) return json(200,{reference:sub.id,status:"pending",payment:{reference:pending[0].payment_reference,amount_kz:Number(pending[0].amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+      const referenceCode = "EN-R-" + crypto.randomUUID().slice(0,8).toUpperCase();
+      const idempotencyKey = "renewal:" + sub.id + ":" + String(sub.expires_at || "initial");
+      const created = await sb("payments",{
+        method:"POST",
+        body:JSON.stringify([{
+          member_id:sub.member_id,subscription_id:sub.id,amount:1000,currency:"AOA",payment_type:"renewal",
+          provider:"manual",status:"pending",payment_reference:referenceCode,idempotency_key:idempotencyKey,
+        }]),
+        headers:{Prefer:"return=representation"},
+      });
+      return json(201,{reference:sub.id,status:"pending",payment:{reference:created[0].payment_reference,amount_kz:Number(created[0].amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+    }
     if (path.startsWith("/public/registrations/") && method === "GET") {
       const reference = path.slice("/public/registrations/".length);
       const phone = digits(q.whatsapp);
-      if (!isUuid(reference) || !/^\\d{8,15}$/.test(phone)) return json(404,{message:"Inscrição não encontrada."});
+      if (!isUuid(reference) || !/^\d{8,15}$/.test(phone)) return json(404,{message:"Inscrição não encontrada."});
       const subs = await sb("subscriptions?select=id,member_id,community_id,status,expires_at,created_at&id=eq."+reference+"&limit=1");
       const sub = subs[0];
       if (!sub) return json(404,{message:"Inscrição não encontrada."});
-      const [members,communities,groups,memberships] = await Promise.all([
+      const [members,communities,groups,memberships,payments] = await Promise.all([
         sb("members?select=id,full_name,phone_e164,phone,created_at&id=eq."+sub.member_id+"&limit=1"),
         sb("communities?select=id,name,slug&id=eq."+sub.community_id+"&limit=1"),
         sb("whatsapp_groups?select=id,name,invite_link&community_id=eq."+sub.community_id),
         sb("group_memberships?select=whatsapp_group_id,status&member_id=eq."+sub.member_id),
+        sb("payments?select=payment_reference,amount,status,created_at,paid_at&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
       ]);
       const member = members[0], community = communities[0];
       if (!member || digits(member.phone_e164 || member.phone) !== phone || !community) return json(404,{message:"Inscrição não encontrada."});
       const membership = memberships.find((m)=>m.status==="joined");
       const subgroup = groups.find((g)=>g.id===membership?.whatsapp_group_id) || groups[0];
       const accessActive = Boolean(membership);
+      const latestPayment = payments[0];
+      const payment = latestPayment ? {
+        reference:latestPayment.payment_reference,amount_kz:Number(latestPayment.amount),
+        status:latestPayment.status==="paid"?"confirmed":latestPayment.status==="rejected"?"rejected":"pending",
+        instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null,
+      } : {reference:sub.id,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null};
       return json(200,{
         reference:sub.id,status:"approved",full_name:member.full_name,created_at:sub.created_at,
         community:{name:community.name,slug:community.slug},
         subgroup:{name:subgroup?.name || "Subgrupo",slug:subgroup?.id || ""},
-        payment:{reference:sub.id,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null},
+        payment,
         subscription:{status:sub.status,due_at:sub.expires_at},
         access:{community:accessActive?"active":"pending",subgroup:accessActive?"active":"pending",community_invite_url:null,subgroup_invite_url:subgroup?.invite_link || null},
         rejection_reason:null,
