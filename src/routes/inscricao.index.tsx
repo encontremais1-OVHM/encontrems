@@ -39,7 +39,7 @@ export const Route = createFileRoute("/inscricao/")({
       { title: "Inscrever-me — Encontre +" },
       {
         name: "description",
-        content: "Escolha a comunidade e o subgrupo, preencha os seus dados e entre gratuitamente durante os primeiros 30 dias.",
+        content: "Escolha a comunidade e os subgrupos, preencha os seus dados e entre gratuitamente durante os primeiros 30 dias.",
       },
       { property: "og:title", content: "Inscrever-me — Encontre +" },
       {
@@ -239,7 +239,7 @@ function InscricaoPage() {
           <>
             <h1 className="text-3xl font-black text-foreground sm:text-4xl">Inscrever-me</h1>
             <p className="mt-2 text-muted-foreground">
-              Escolha a comunidade e o subgrupo, preencha os seus dados e siga para o pagamento da adesão.
+              Escolha a comunidade e os subgrupos, preencha os seus dados e confirme a inscrição.
             </p>
 
             <div className="mt-8">
@@ -435,7 +435,7 @@ function InscricaoPage() {
                   </form>
                 )}
 
-                {step === 3 && community && subgroup && (
+                {step === 3 && community && selectedSubgroups.length > 0 && (
                   <section className="space-y-5 animate-in fade-in duration-300">
                     <h2 className="text-lg font-extrabold text-foreground">Confirme a sua inscrição</h2>
                     <dl className="divide-y rounded-2xl border bg-card">
