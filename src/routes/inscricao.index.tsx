@@ -39,7 +39,7 @@ export const Route = createFileRoute("/inscricao/")({
       { title: "Inscrever-me — Encontre +" },
       {
         name: "description",
-        content: "Escolha a comunidade e o subgrupo, preencha os seus dados e siga para o pagamento da adesão.",
+        content: "Escolha a comunidade e o subgrupo, preencha os seus dados e entre gratuitamente durante os primeiros 30 dias.",
       },
       { property: "og:title", content: "Inscrever-me — Encontre +" },
       {
