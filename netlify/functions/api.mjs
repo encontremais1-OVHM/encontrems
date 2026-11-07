@@ -342,6 +342,8 @@ async function syncWhatsApp(communityId) {
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({length:Math.ceil(items.length/size)},(_,i)=>items.slice(i*size,(i+1)*size));
   for (const group of groupsResult.groups || []) {
+    const existingGroups = await sb("whatsapp_groups?select=id,group_type&whatsapp_connection_id=eq."+encodeURIComponent(connectionId)+"&external_group_id=eq."+encodeURIComponent(group.id)+"&limit=1");
+    const groupType = existingGroups[0]?.group_type || (String(group.subject || "").trim().toLowerCase() === communityName ? "main" : "subgroup");
     let inviteLink = null;
     try {
       inviteLink = (await bridge("/groups/" + encodeURIComponent(group.id) + "/invite-link")).invite_link || null;
@@ -350,7 +352,7 @@ async function syncWhatsApp(communityId) {
     }
     const stored = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
       method:"POST",
-      body:JSON.stringify([{community_id:communityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:String(group.subject || "").trim().toLowerCase() === communityName ? "main" : "subgroup",invite_link:inviteLink,is_active:true,sync_status:"synced"}]),
+      body:JSON.stringify([{community_id:communityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:groupType,invite_link:inviteLink,is_active:true,sync_status:"synced"}]),
       headers:{Prefer:"resolution=merge-duplicates,return=representation"},
     });
     const dbGroup = stored[0];
@@ -460,6 +462,22 @@ export default async (request) => {
         }).filter(Boolean),
         participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
       }))});
+    }
+    if (path.startsWith("/admin/whatsapp/groups/") && path.endsWith("/type") && method === "PATCH") {
+      const groupId = path.slice("/admin/whatsapp/groups/".length, -"/type".length);
+      const body = await request.json().catch(() => ({}));
+      if (!isUuid(groupId) || !["main","subgroup"].includes(body.group_type)) return json(422,{message:"Tipo de grupo inválido."});
+      const selected = await sb("whatsapp_groups?select=id,community_id&id=eq."+groupId+"&limit=1");
+      if (!selected.length) return json(404,{message:"Grupo não encontrado."});
+      if (body.group_type === "main") {
+        await sb("whatsapp_groups?community_id=eq."+selected[0].community_id+"&group_type=eq.main",{
+          method:"PATCH",body:JSON.stringify({group_type:"subgroup"}),headers:{Prefer:"return=minimal"},
+        });
+      }
+      await sb("whatsapp_groups?id=eq."+groupId,{
+        method:"PATCH",body:JSON.stringify({group_type:body.group_type}),headers:{Prefer:"return=minimal"},
+      });
+      return json(200,{message:"Tipo do grupo atualizado.",group_id:groupId,group_type:body.group_type});
     }
     if (path === "/admin/whatsapp/connect" && method === "POST") return json(202,await bridge("/connect","POST",{}));
     if (path === "/admin/whatsapp/qr" && method === "GET") return json(200,await bridge("/qr"));
