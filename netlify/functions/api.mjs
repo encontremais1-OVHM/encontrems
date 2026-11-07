@@ -535,7 +535,7 @@ export default async (request) => {
       const result = await adminCreateCommunity(body, user);
       return json(result.status, result.body);
     }
-    const communityAction = path.match(/^\/admin\/communities\\/([0-9a-f-]{36})$/i);
+    const communityAction = path.match(/^\/admin\/communities\/([0-9a-f-]{36})$/i);
     if (communityAction && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateCommunity(communityAction[1], body, user);
@@ -589,7 +589,7 @@ export default async (request) => {
         participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
       }))});
     }
-    const groupSettings = path.match(/^\/admin\/whatsapp\/groups\\/([0-9a-f-]{36})\\/settings$/i);
+    const groupSettings = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/settings$/i);
     if (groupSettings && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateGroup(groupSettings[1], body, user);
