@@ -219,7 +219,7 @@ async function syncWhatsApp(communityId) {
   return {groups_imported:groupsImported,contacts_imported:contactsImported,participants_skipped:skipped};
 }
 
-export default async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json(204,{});
   const method = event.httpMethod || "GET";
   const q = event.queryStringParameters || {};
@@ -240,9 +240,19 @@ export default async (event) => {
       return json(200,status);
     }
     if (path === "/admin/whatsapp/groups" && method === "GET") {
-      const groups = await sb("whatsapp_groups?select=id,name,description,external_group_id,group_type,sync_status,is_active,community_id&order=name.asc");
-      const memberships = await sb("group_memberships?select=whatsapp_group_id,status");
-      return json(200,{data:groups.map((g)=>({...g,participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length}))});
+      const [groups,memberships,members] = await Promise.all([
+        sb("whatsapp_groups?select=id,name,description,external_group_id,group_type,sync_status,is_active,community_id&order=name.asc"),
+        sb("group_memberships?select=member_id,whatsapp_group_id,status,external_participant_id"),
+        sb("members?select=id,full_name,phone_e164,phone,email"),
+      ]);
+      return json(200,{data:groups.map((g)=>({
+        ...g,
+        participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").map((m)=>{
+          const person=members.find((p)=>p.id===m.member_id);
+          return person ? {id:person.id,name:person.full_name,phone:person.phone_e164 || person.phone,email:person.email,status:m.status} : null;
+        }).filter(Boolean),
+        participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
+      }))});
     }
     if (path === "/admin/whatsapp/connect" && method === "POST") return json(202,await bridge("/connect","POST",{}));
     if (path === "/admin/whatsapp/qr" && method === "GET") return json(200,await bridge("/qr"));
