@@ -150,14 +150,15 @@ function Home() {
         {/* Quem somos */}
         <section id="quem-somos" className="border-t bg-muted/30" aria-labelledby="quem-somos-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
-            <div className="order-2 overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10 lg:order-1">
+            <div className="order-2 overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10 lg:order-1">
               <img
-                src="/images/encontre-quem-somos.svg"
-                alt="Pessoas de diferentes origens unem as mãos num gesto de colaboração."
-                width={1200}
-                height={900}
+                src="/images/quem-somos-encontremais.webp"
+                alt="Pessoas de diferentes origens juntam as mãos ao centro num gesto de união e colaboração."
+                width={1920}
+                height={1280}
                 loading="lazy"
-                className="h-full max-h-[430px] w-full object-cover"
+                decoding="async"
+                className="aspect-[3/2] w-full object-cover"
               />
             </div>
             <div className="order-1 lg:order-2">
@@ -212,14 +213,15 @@ function Home() {
                 O crescimento de um pode tornar-se uma oportunidade para muitos.
               </p>
             </div>
-            <div className="overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10">
+            <div className="overflow-hidden rounded-3xl bg-background shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-cadeia.svg"
-                alt="Mãos unidas representam uma cadeia de apoio e colaboração."
-                width={1200}
-                height={900}
+                src="/images/o-que-fazemos-encontremais.webp"
+                alt="Várias mãos seguram os pulsos umas das outras, formando uma cadeia de apoio e colaboração."
+                width={1920}
+                height={1280}
                 loading="lazy"
-                className="h-full max-h-[390px] w-full object-cover"
+                decoding="async"
+                className="aspect-[3/2] w-full object-contain"
               />
             </div>
           </div>
@@ -228,14 +230,15 @@ function Home() {
         {/* Junte-se à comunidade */}
         <section id="junte-se" className="border-y bg-muted/30" aria-labelledby="junte-se-title">
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-16 sm:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
-            <div className="overflow-hidden rounded-3xl shadow-elevated ring-1 ring-foreground/10">
+            <div className="mx-auto w-full max-w-[520px] overflow-hidden rounded-3xl bg-muted shadow-elevated ring-1 ring-foreground/10">
               <img
-                src="/images/encontre-lugar-para-todos.svg"
-                alt="Uma comunidade diversa de pessoas que se encontram e trocam oportunidades."
-                width={1200}
-                height={900}
+                src="/images/comunidade-encontremais.webp"
+                alt="Uma grande comunidade diversa de pessoas reunidas sobre um fundo azul, a criar conexões e oportunidades."
+                width={1920}
+                height={1920}
                 loading="lazy"
-                className="aspect-square max-h-[460px] w-full object-cover"
+                decoding="async"
+                className="aspect-square w-full object-cover"
               />
             </div>
             <div>
