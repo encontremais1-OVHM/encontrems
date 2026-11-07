@@ -292,7 +292,7 @@ function RenewalsVsExpirations({ data, loading }: { data?: DashboardSummary | un
 
 function SubscriptionCycle() {
   const steps = [
-    { day: "Dia 0", title: "Pagamento confirmado", text: `${formatKz(DEFAULT_PLAN.initialPriceKz)} · adesão + 30 dias`, tone: "bg-primary" },
+    { day: "Dia 0", title: "Adesão gratuita", text: `${formatKz(DEFAULT_PLAN.initialPriceKz)} · acesso + 30 dias`, tone: "bg-primary" },
     { day: `Dia ${DEFAULT_PLAN.warningDay}`, title: "Aviso de renovação", text: "Notificação por WhatsApp/email", tone: "bg-brand-teal" },
     { day: `Dia ${DEFAULT_PLAN.durationDays}`, title: "Vencimento", text: `Início da tolerância de ${DEFAULT_PLAN.graceDays} dias`, tone: "bg-warning" },
     { day: `Dia ${DEFAULT_PLAN.durationDays + DEFAULT_PLAN.graceDays}`, title: "Expiração", text: "Ordens de remoção dos grupos", tone: "bg-destructive" },
@@ -302,7 +302,7 @@ function SubscriptionCycle() {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-bold text-foreground">Ciclo de assinatura</h2>
         <p className="text-xs text-muted-foreground">
-          Regras padrão · fuso Africa/Luanda · calculadas pelo backend
+          Plano ativo · fuso Africa/Luanda · regras lidas do Supabase
         </p>
       </div>
       <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
