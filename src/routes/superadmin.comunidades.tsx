@@ -20,14 +20,10 @@ function ComunidadesPage() {
   const [name,setName]=useState("");
   const [description,setDescription]=useState("");
   const [influencerName,setInfluencerName]=useState("");
-  const [initialPrice,setInitialPrice]=useState("0");
-  const [renewalPrice,setRenewalPrice]=useState("1000");
-  const [durationDays,setDurationDays]=useState("30");
-  const [graceDays,setGraceDays]=useState("5");
   const [notice,setNotice]=useState<string|null>(null);
   const query=useQuery({queryKey:["admin","resource","communities"],queryFn:()=>apiRequest<{data:Community[]}>("/admin/resources/communities"),retry:false});
   const create=useMutation({
-    mutationFn:()=>apiRequest<{message:string}>("/admin/communities",{method:"POST",body:{name,description,influencer_name:influencerName,initial_price:Number(initialPrice),renewal_price:Number(renewalPrice),duration_days:Number(durationDays),grace_days:Number(graceDays)}}),
+    mutationFn:()=>apiRequest<{message:string}>("/admin/communities",{method:"POST",body:{name,description,influencer_name:influencerName}}),
     onSuccess:async(result)=>{setNotice(result.message);setName("");setDescription("");setInfluencerName("");await client.invalidateQueries({queryKey:["admin","resource","communities"]});}
   });
   const update=useMutation({
@@ -46,12 +42,7 @@ function ComunidadesPage() {
         <div className="space-y-1.5"><Label htmlFor="community-influencer">Responsável (opcional)</Label><Input id="community-influencer" value={influencerName} onChange={e=>setInfluencerName(e.target.value)} placeholder="Nome do responsável"/></div>
       </div>
       <div className="space-y-1.5"><Label htmlFor="community-description">Descrição</Label><Textarea id="community-description" value={description} onChange={e=>setDescription(e.target.value)} rows={2} placeholder="Explique o objetivo desta comunidade."/></div>
-      <div><p className="mb-2 text-sm font-semibold text-foreground">Plano inicial</p><div className="grid gap-4 sm:grid-cols-4">
-        <div className="space-y-1.5"><Label htmlFor="initial-price">Adesão (Kz)</Label><Input id="initial-price" type="number" min="0" step="1" value={initialPrice} onChange={e=>setInitialPrice(e.target.value)} required/></div>
-        <div className="space-y-1.5"><Label htmlFor="renewal-price">Renovação (Kz)</Label><Input id="renewal-price" type="number" min="0" step="1" value={renewalPrice} onChange={e=>setRenewalPrice(e.target.value)} required/></div>
-        <div className="space-y-1.5"><Label htmlFor="duration-days">Duração (dias)</Label><Input id="duration-days" type="number" min="1" max="365" value={durationDays} onChange={e=>setDurationDays(e.target.value)} required/></div>
-        <div className="space-y-1.5"><Label htmlFor="grace-days">Tolerância (dias)</Label><Input id="grace-days" type="number" min="0" max="30" value={graceDays} onChange={e=>setGraceDays(e.target.value)} required/></div>
-      </div></div>
+      <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm"><p className="font-semibold text-foreground">Plano aplicado nesta fase</p><p className="mt-1 text-muted-foreground">Adesão gratuita · 1.000 Kz por renovação · 30 dias por período · 5 dias de tolerância. A personalização de preços por comunidade será ativada quando o fluxo de pagamentos suportar tarifas diferentes.</p></div>
       <div className="flex justify-end"><Button type="submit" disabled={create.isPending||name.trim().length<2}>{create.isPending?"A criar…":"Criar comunidade"}</Button></div>
     </form>
     <section className="space-y-3">
