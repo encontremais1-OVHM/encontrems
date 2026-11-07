@@ -35,8 +35,8 @@ async function bridge(path, body) {
 
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
-  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at&operation_type=eq.add&status=in.(queued,retry_pending)&order=created_at.asc&limit=100");
-  const due = operations.filter((operation) => !operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime());
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
+  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000));
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
   try { connected = (await bridge("/status")).connected === true; } catch { /* queued additions remain pending */ }
@@ -89,8 +89,8 @@ async function processPendingAdditions(now, nowIso) {
       continue;
     }
     const members = await db("members?select=phone_e164,phone&id=eq." + operation.member_id + "&limit=1");
-    const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\\D/g, "");
-    if (!/^\\d{8,15}$/.test(phone)) {
+    const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\D/g, "");
+    if (!/^\d{8,15}$/.test(phone)) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "failed", last_error: "Número de WhatsApp inválido para a entrada.", updated_at: nowIso }),
