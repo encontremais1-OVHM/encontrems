@@ -325,11 +325,20 @@ export default async (request) => {
         const result = await confirmRenewalPayment(paymentAction[1],user);
         return json(result.status,result.body);
       }
+      const rows = await sb("payments?select=id,status,member_id&id=eq."+paymentAction[1]+"&limit=1");
+      const payment = rows[0];
+      if (!payment) return json(404,{message:"Pagamento não encontrado."});
+      if (!["pending","initiated","under_review"].includes(payment.status)) return json(409,{message:"Só é possível rejeitar pagamentos pendentes."});
       const body = await request.json().catch(() => ({}));
       const reason = String(body.reason || "Pagamento não confirmado.").slice(0,500);
       await sb("payments?id=eq."+paymentAction[1],{
         method:"PATCH",
         body:JSON.stringify({status:"rejected",rejection_reason:reason,verified_at:iso(new Date()),updated_at:iso(new Date())}),
+        headers:{Prefer:"return=minimal"},
+      });
+      await sb("audit_logs",{
+        method:"POST",
+        body:JSON.stringify([{user_id:user.id,member_id:payment.member_id,action:"renewal.payment_rejected",entity_type:"payment",entity_id:payment.id,new_values:{status:"rejected",reason}}]),
         headers:{Prefer:"return=minimal"},
       });
       return json(200,{message:"Pagamento rejeitado."});
@@ -487,8 +496,9 @@ export default async (request) => {
         status:latestPayment.status==="paid"?"confirmed":latestPayment.status==="rejected"?"rejected":"pending",
         instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null,
       } : {reference:sub.id,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null};
+      const registrationStatus = latestPayment && ["pending","initiated","under_review"].includes(latestPayment.status) ? "pending_payment" : "approved";
       return json(200,{
-        reference:sub.id,status:"approved",full_name:member.full_name,created_at:sub.created_at,
+        reference:sub.id,status:registrationStatus,full_name:member.full_name,created_at:sub.created_at,
         community:{name:community.name,slug:community.slug},
         subgroup:{name:subgroup?.name || "Subgrupo",slug:subgroup?.id || ""},
         payment,
