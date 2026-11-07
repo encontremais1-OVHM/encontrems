@@ -116,7 +116,7 @@ function CatalogSkeleton({ count }: { count: number }) {
   );
 }
 
-/** Public catalogue of communities, always loaded from the Laravel API. */
+/** Public catalogue of communities, loaded through the secure Netlify API from external Supabase. */
 export function CommunityCatalog({ limit }: { limit?: number }) {
   const configured = isApiConfigured();
   const query = useQuery(publicCommunitiesQuery());

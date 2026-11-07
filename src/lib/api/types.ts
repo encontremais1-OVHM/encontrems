@@ -1,5 +1,5 @@
 /**
- * Shapes returned by the Laravel API. Kept in sync with docs/API_CONTRACT.md.
+ * Shapes returned by the secure Netlify API backed by external Supabase.
  * Money is always an integer number of Kwanza (`*_kz`). Dates are ISO 8601.
  */
 
@@ -20,14 +20,14 @@ export type AccessStatus = "none" | "pending" | "active" | "removal_pending" | "
 export type WhatsAppConnectionStatus = "not_configured" | "connected" | "disconnected" | "error";
 
 export interface AdminUser {
-  id: number;
+  id: string;
   name: string;
   email: string;
   role: Role;
 }
 
 export interface Member {
-  id: number;
+  id: string;
   full_name: string;
   whatsapp: string;
   email: string | null;
@@ -92,14 +92,14 @@ export interface MeResponse {
 /* ------------------------------------------------------------------ */
 
 export interface PublicSubgroup {
-  id: number;
+  id: string;
   slug: string;
   name: string;
   description: string | null;
 }
 
 export interface PublicCommunity {
-  id: number;
+  id: string;
   slug: string;
   name: string;
   description: string | null;
@@ -119,8 +119,8 @@ export interface PublicPlan {
 }
 
 export interface RegistrationInput {
-  community_id: number;
-  subgroup_id: number;
+  community_id: string;
+  subgroup_id: string;
   full_name: string;
   /** E.164 digits, e.g. 244923000000 */
   whatsapp: string;
@@ -161,6 +161,10 @@ export interface RegistrationReceipt {
   reference: string;
   status: RegistrationStatus;
   payment: RegistrationPayment;
+  access?: {
+    community_invite_url: string | null;
+    subgroup_invite_url: string | null;
+  };
 }
 
 export interface RegistrationAccess {

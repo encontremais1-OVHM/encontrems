@@ -1,6 +1,6 @@
 /**
  * Default commercial rules from the owner's specification.
- * Display-only fallback: the Laravel `settings`/`plans` tables are the source of
+ * Display-only fallback: the external Supabase `plans` table is the source of
  * truth and all financial calculations happen in the backend.
  */
 export const DEFAULT_PLAN = {

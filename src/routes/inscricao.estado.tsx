@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertCircle, Check, Circle, Loader2, MessageCircle, RefreshCw, Search, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, describeApiError } from "@/lib/api/client";
+import { ApiError, apiRequest, describeApiError } from "@/lib/api/client";
 import { registrationStatusQuery } from "@/lib/api/endpoints";
 import type { RegistrationStatus } from "@/lib/api/types";
 import { isApiConfigured } from "@/lib/config";
@@ -76,6 +76,13 @@ function EstadoPage() {
     ...registrationStatusQuery(lookup?.reference ?? "", lookup?.whatsapp ?? ""),
     enabled: configured && lookup !== null,
   });
+  const data = query.data;
+  const renewal = useMutation({
+    mutationFn: () => apiRequest("/public/registrations/" + encodeURIComponent(data?.reference || "") + "/renewal", {
+      method: "POST", body: { whatsapp: lookup?.whatsapp }, auth: false,
+    }),
+    onSuccess: () => { void query.refetch(); },
+  });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -87,7 +94,6 @@ function EstadoPage() {
     setLookup({ reference: ref, whatsapp: wa });
   }
 
-  const data = query.data;
   const notFound = query.error instanceof ApiError && query.error.status === 404;
 
   return (
@@ -185,6 +191,17 @@ function EstadoPage() {
             </section>
 
             <WhatsAppAccess links={inviteLinks(data)} />
+
+            {data.subscription?.due_at && Date.now() >= new Date(data.subscription.due_at).getTime() - 7 * 86400000 && data.payment?.status !== "pending" && data.status === "approved" && (
+              <section className="rounded-2xl border bg-card p-5 shadow-card">
+                <h2 className="font-semibold text-foreground">Renovar a participação</h2>
+                <p className="mt-1 text-sm text-muted-foreground">A adesão inicial foi gratuita. A renovação mantém o acesso por mais 30 dias e custa 1.000 Kz. Pode pagar nos últimos 7 dias do período ou durante a tolerância.</p>
+                {renewal.error && <p className="mt-2 text-sm text-destructive">{describeApiError(renewal.error)}</p>}
+                <Button className="mt-4" onClick={() => renewal.mutate()} disabled={renewal.isPending}>
+                  {renewal.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />} Solicitar renovação de 1.000 Kz
+                </Button>
+              </section>
+            )}
 
             {data.payment && data.payment.status !== "confirmed" && data.status !== "rejected" && data.status !== "cancelled" && (
               <PaymentPanel

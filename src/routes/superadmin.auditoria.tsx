@@ -1,31 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FileClock } from "lucide-react";
-
-import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
+import { AdminResourceList } from "@/components/app/AdminResourceList";
 
 export const Route = createFileRoute("/superadmin/auditoria")({
-  head: () => ({
-    meta: [
-      { title: "Auditoria — Encontre +" },
-      { name: "description", content: "Registo imutável das ações administrativas e alterações financeiras." },
-      { property: "og:title", content: "Auditoria — Encontre +" },
-      { property: "og:description", content: "Registo imutável das ações administrativas e alterações financeiras." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: AuditoriaPage,
+  head: () => ({ meta: [{ title: "Auditoria — Encontre +" }] }),
+  component: () => <AdminResourceList resource="audit" title="Auditoria" description="Histórico de operações registadas no Supabase, com entidade, membro e data." columns={[{"key":"action","label":"Acção"},{"key":"entity_type","label":"Entidade"},{"key":"member_name","label":"Membro"},{"key":"entity_id","label":"ID da entidade"},{"key":"created_at","label":"Data"}]} />,
 });
-
-function AuditoriaPage() {
-  return (
-    <ModulePlaceholder
-      icon={FileClock}
-      title="Auditoria"
-      description="Registo imutável das ações administrativas e alterações financeiras."
-      phase={6}
-      features={["Quem fez o quê e quando", "Valores anteriores e novos", "Filtro por utilizador, ação e período", "Alterações financeiras sempre auditadas"]}
-      endpoints={["GET /admin/audit-logs"]}
-    />
-  );
-}

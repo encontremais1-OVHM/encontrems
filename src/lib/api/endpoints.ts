@@ -89,7 +89,7 @@ export const meQuery = () =>
 
 /* ----------------------------- Public ----------------------------- */
 
-/** GET /public/communities — active communities with their active subgroups. */
+/** GET /public/communities — active communities and subgroups from Supabase. */
 export const publicCommunitiesQuery = () =>
   queryOptions({
     queryKey: ["public", "communities"],
@@ -100,7 +100,7 @@ export const publicCommunitiesQuery = () =>
     staleTime: 5 * 60_000,
   });
 
-/** GET /public/plan — current prices and periods from the backend settings. */
+/** GET /public/plan — current prices and periods from the active Supabase plan. */
 export const publicPlanQuery = () =>
   queryOptions({
     queryKey: ["public", "plan"],

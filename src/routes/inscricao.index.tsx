@@ -39,7 +39,7 @@ export const Route = createFileRoute("/inscricao/")({
       { title: "Inscrever-me — Encontre +" },
       {
         name: "description",
-        content: "Escolha a comunidade e o subgrupo, preencha os seus dados e siga para o pagamento da adesão.",
+        content: "Escolha a comunidade e o subgrupo, preencha os seus dados e entre gratuitamente durante os primeiros 30 dias.",
       },
       { property: "og:title", content: "Inscrever-me — Encontre +" },
       {
@@ -137,8 +137,8 @@ function InscricaoPage() {
   const communities = useMemo(() => catalog.data?.data ?? [], [catalog.data]);
 
   const [step, setStep] = useState(0);
-  const [communityId, setCommunityId] = useState<number | null>(null);
-  const [subgroupId, setSubgroupId] = useState<number | null>(null);
+  const [communityId, setCommunityId] = useState<string | null>(null);
+  const [subgroupId, setSubgroupId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -537,8 +537,22 @@ function Receipt({
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
       <p className="text-sm text-muted-foreground">
-        Depois de o pagamento ser confirmado, recebe acesso à comunidade e ao subgrupo escolhido.
+        A adesão é gratuita durante 30 dias. Se a conta WhatsApp da comunidade estiver ligada e tiver permissões de administradora, a entrada será processada automaticamente. Caso contrário, pode usar os convites abaixo quando estiverem disponíveis.
       </p>
+      {(receipt.access?.community_invite_url || receipt.access?.subgroup_invite_url) && (
+        <div className="flex flex-col gap-3 sm:flex-row">
+          {receipt.access?.community_invite_url && (
+            <Button asChild>
+              <a href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Entrar na comunidade WhatsApp</a>
+            </Button>
+          )}
+          {receipt.access?.subgroup_invite_url && (
+            <Button asChild variant="outline">
+              <a href={receipt.access.subgroup_invite_url} target="_blank" rel="noopener noreferrer">Entrar no subgrupo</a>
+            </Button>
+          )}
+        </div>
+      )}
       <Button variant="outline" asChild>
         <Link to="/inscricao/estado" search={{ ref: receipt.reference }}>
           Consultar estado da inscrição <ArrowRight />

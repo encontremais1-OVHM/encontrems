@@ -56,8 +56,8 @@ export function PaymentPanel({
     <section className="rounded-2xl border bg-card p-5 shadow-card sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pagamento da adesão</p>
-          <p className="mt-1 font-display text-3xl font-black tabular text-foreground">{formatKz(payment.amount_kz)}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{payment.amount_kz === 0 ? "Adesão gratuita" : "Pagamento da adesão"}</p>
+          <p className="mt-1 font-display text-3xl font-black tabular text-foreground">{payment.amount_kz === 0 ? "0 Kz" : formatKz(payment.amount_kz)}</p>
         </div>
         <p className="rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">
           Referência: <span className="font-mono font-semibold text-foreground">{payment.reference}</span>
@@ -93,11 +93,11 @@ export function PaymentPanel({
         </div>
       )}
 
-      {!payment.checkout_url && payment.instructions.length === 0 && (
-        <p className="mt-4 text-sm text-muted-foreground">
-          As instruções de pagamento serão enviadas pela equipa Encontre + para o seu WhatsApp.
-        </p>
-      )}
+      {payment.amount_kz === 0 ? (
+        <p className="mt-4 text-sm text-success">A entrada na comunidade é gratuita durante os primeiros 30 dias. A renovação custa 1.000 Kz.</p>
+      ) : !payment.checkout_url && payment.instructions.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">As instruções de pagamento serão enviadas pela equipa Encontre + para o seu WhatsApp.</p>
+      ) : null}
 
       {payment.proof_upload_enabled && payment.status !== "confirmed" && (
         <div className="mt-6 border-t pt-5">

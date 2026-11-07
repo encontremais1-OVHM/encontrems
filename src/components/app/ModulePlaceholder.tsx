@@ -39,7 +39,7 @@ export function ModulePlaceholder({
             className="h-full"
             icon={icon}
             title={`Módulo em preparação — Fase ${phase}`}
-            description="A interface deste módulo será ligada ao backend Laravel nesta fase. Até lá, não são apresentados dados."
+            description="Este módulo ainda não foi implementado. Quando estiver pronto, será ligado à API segura da Netlify e aos dados reais do Supabase. Até lá, não são apresentados dados."
           />
         </section>
 
@@ -59,7 +59,7 @@ export function ModulePlaceholder({
           <section className="rounded-xl border bg-card p-5 shadow-card">
             <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
               <Construction className="size-4 text-muted-foreground" />
-              Contrato de API (Laravel)
+              Rotas previstas para esta fase
             </h2>
             <ul className="mt-3 space-y-1.5">
               {endpoints.map((e) => (

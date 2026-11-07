@@ -1,31 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
-
-import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
+import { AdminResourceList } from "@/components/app/AdminResourceList";
 
 export const Route = createFileRoute("/superadmin/configuracoes")({
-  head: () => ({
-    meta: [
-      { title: "Configurações — Encontre +" },
-      { name: "description", content: "Parâmetros da organização geridos pelo Super Admin." },
-      { property: "og:title", content: "Configurações — Encontre +" },
-      { property: "og:description", content: "Parâmetros da organização geridos pelo Super Admin." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: ConfiguracoesPage,
+  head: () => ({ meta: [{ title: "Configurações do plano — Encontre +" }] }),
+  component: () => <AdminResourceList resource="plans" title="Configurações do plano" description="Valores reais do plano ativo da comunidade: adesão gratuita, renovação de 1.000 Kz, 30 dias e 5 dias de tolerância." columns={[{"key":"community_name","label":"Comunidade"},{"key":"name","label":"Plano"},{"key":"initial_price","label":"Adesão"},{"key":"renewal_price","label":"Renovação"},{"key":"duration_days","label":"Dias"},{"key":"grace_days","label":"Tolerância"},{"key":"is_active","label":"Ativo"}]} />,
 });
-
-function ConfiguracoesPage() {
-  return (
-    <ModulePlaceholder
-      icon={Settings}
-      title="Configurações"
-      description="Parâmetros da organização geridos pelo Super Admin."
-      phase={2}
-      features={["Nome e logótipo da organização", "Preço inicial, mensalidade, duração e tolerância", "Notificações e estado da integração WhatsApp", "Configurações de pagamento"]}
-      endpoints={["GET /admin/settings", "PATCH /admin/settings"]}
-    />
-  );
-}

@@ -1,17 +1,11 @@
 /**
- * Public frontend configuration.
- *
- * Supabase URL and publishable/anon key are public client values protected by
- * Supabase Auth and RLS. Never put service_role or secret keys in VITE_ vars.
+ * Public browser configuration. The Supabase publishable key is safe to expose;
+ * all privileged database access is handled by Netlify Functions.
  */
-const rawApiUrl = (import.meta.env["VITE_API_URL"] as string | undefined)?.trim() ?? "";
-const rawSupabaseUrl =
-  (import.meta.env["VITE_SUPABASE_URL"] as string | undefined)?.trim() ?? "";
-const rawSupabaseAnonKey =
-  (import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined)?.trim() ?? "";
+const rawSupabaseUrl = (import.meta.env["VITE_SUPABASE_URL"] as string | undefined)?.trim() ?? "";
+const rawSupabaseAnonKey = (import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined)?.trim() ?? "";
 
 export const config = {
-  apiUrl: rawApiUrl.replace(/\/+$/, ""),
   supabaseUrl: rawSupabaseUrl.replace(/\/+$/, ""),
   supabaseAnonKey: rawSupabaseAnonKey,
   timezone: "Africa/Luanda",
@@ -19,6 +13,6 @@ export const config = {
   currency: "AOA",
 } as const;
 
-export const isApiConfigured = () => config.apiUrl.length > 0;
-export const isSupabaseConfigured = () =>
-  config.supabaseUrl.length > 0 && config.supabaseAnonKey.length > 0;
+export const isSupabaseConfigured = () => config.supabaseUrl.length > 0 && config.supabaseAnonKey.length > 0;
+/** The application API is served by same-origin Netlify Functions. */
+export const isApiConfigured = isSupabaseConfigured;
