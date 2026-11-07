@@ -34,6 +34,104 @@ async function bridge(path, body) {
 }
 
 const iso = (d) => d.toISOString();
+async function processPendingAdditions(now, nowIso) {
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
+  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000));
+  if (!due.length) return { succeeded: 0, pending: 0 };
+  let connected = false;
+  try { connected = (await bridge("/status")).connected === true; } catch { /* queued additions remain pending */ }
+  let succeeded = 0;
+  let pending = 0;
+  for (const operation of due) {
+    const [groups, memberships] = await Promise.all([
+      db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active&id=eq." + operation.whatsapp_group_id + "&limit=1"),
+      db("group_memberships?select=id,status&member_id=eq." + operation.member_id + "&whatsapp_group_id=eq." + operation.whatsapp_group_id + "&limit=1"),
+    ]);
+    const group = groups[0];
+    const membership = memberships[0];
+    if (!group || !membership || !group.is_active) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "O grupo ou a associação já não está disponível.", updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      continue;
+    }
+    if (membership.status === "joined") {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      succeeded++;
+      continue;
+    }
+    const subscriptions = await db("subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq." + operation.member_id + "&community_id=eq." + group.community_id + "&order=created_at.desc&limit=1");
+    const subscription = subscriptions[0];
+    const expiry = subscription?.expires_at ? new Date(subscription.expires_at).getTime() : 0;
+    const graceEnd = subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : expiry;
+    const eligible = subscription && ["active", "grace_period"].includes(subscription.status) && graceEnd >= now.getTime();
+    if (!eligible) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "A subscrição desta comunidade já não autoriza a entrada.", updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      continue;
+    }
+    if (!connected || !group.external_group_id) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "retry_pending", last_error: !connected ? "WhatsApp desconectado; a entrada será tentada novamente." : "Identificador do grupo não disponível.", next_retry_at: iso(new Date(now.getTime() + 15 * 60 * 1000)), updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      pending++;
+      continue;
+    }
+    const members = await db("members?select=phone_e164,phone&id=eq." + operation.member_id + "&limit=1");
+    const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\D/g, "");
+    if (!/^\d{8,15}$/.test(phone)) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "Número de WhatsApp inválido para a entrada.", updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      continue;
+    }
+    const attempt = Number(operation.attempts || 0) + 1;
+    await db("access_operations?id=eq." + operation.id, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "processing", attempts: attempt, updated_at: nowIso }),
+      headers: { Prefer: "return=minimal" },
+    });
+    try {
+      await bridge(group.group_type === "community" ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants/add" : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants/add", { phone });
+      await db("group_memberships?id=eq." + membership.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "joined", external_participant_id: phone + "@s.whatsapp.net", joined_at: nowIso, removed_at: null, last_synced_at: nowIso, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      succeeded++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp addition failed";
+      const terminal = attempt >= 8;
+      const retryMinutes = Math.min(60, 5 * (2 ** Math.max(0, attempt - 1)));
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: terminal ? "failed" : "retry_pending", last_error: message, next_retry_at: terminal ? null : iso(new Date(now.getTime() + retryMinutes * 60 * 1000)), updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      pending++;
+    }
+  }
+  return { succeeded, pending };
+}
+
 
 export default async (_request) => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
@@ -43,11 +141,12 @@ export default async (_request) => {
 
   const now = new Date();
   const nowIso = iso(now);
+  const additions = await processPendingAdditions(now, nowIso);
   const expired = await db(
     "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
   );
 
-  if (!expired.length) return Response.json({ ok: true, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
+  if (!expired.length) return Response.json({ ok: true, additions_succeeded: additions.succeeded, additions_pending: additions.pending, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
 
   let removalsSucceeded = 0;
   let removalsPending = 0;
@@ -60,9 +159,12 @@ export default async (_request) => {
   }
 
   for (const subscription of expired) {
+    const communityGroups = await db("whatsapp_groups?select=id&community_id=eq." + subscription.community_id);
+    const communityGroupIds = communityGroups.map((group) => group.id);
+    if (!communityGroupIds.length) continue;
     const memberships = await db(
       "group_memberships?select=id,member_id,whatsapp_group_id,external_participant_id,status&member_id=eq." +
-      subscription.member_id + "&status=in.(joined,removal_pending)",
+      subscription.member_id + "&whatsapp_group_id=in.(" + communityGroupIds.join(",") + ")&status=in.(joined,removal_pending)",
     );
 
     for (const membership of memberships) {
@@ -120,10 +222,10 @@ export default async (_request) => {
         headers: { Prefer: "return=minimal" },
       });
       try {
-        const groupRows = await db("whatsapp_groups?select=external_group_id&id=eq." + membership.whatsapp_group_id + "&limit=1");
+        const groupRows = await db("whatsapp_groups?select=external_group_id,group_type&id=eq." + membership.whatsapp_group_id + "&limit=1");
         const externalGroupId = groupRows[0]?.external_group_id;
         if (!externalGroupId) throw new Error("Identificador do grupo WhatsApp não disponível.");
-        await bridge("/groups/" + encodeURIComponent(externalGroupId) + "/participants/remove", {
+        await bridge(groupRows[0]?.group_type === "community" ? "/communities/" + encodeURIComponent(externalGroupId) + "/participants/remove" : "/groups/" + encodeURIComponent(externalGroupId) + "/participants/remove", {
           participant: membership.external_participant_id,
         });
         await db("group_memberships?id=eq." + membership.id, {
@@ -173,10 +275,12 @@ export default async (_request) => {
     ok: true,
     subscriptions_checked: expired.length,
     removals_succeeded: removalsSucceeded,
+    additions_succeeded: additions.succeeded,
+    additions_pending: additions.pending,
     removals_pending: removalsPending,
   });
 };
 
 export const config = {
-  schedule: "0 1 * * *",
+  schedule: "*/15 * * * *",
 };
