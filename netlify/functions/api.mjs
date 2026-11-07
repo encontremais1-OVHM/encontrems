@@ -600,7 +600,7 @@ export default async (request) => {
         sb("members?select=id,full_name,phone_e164,phone,created_at&id=eq."+sub.member_id+"&limit=1"),
         sb("communities?select=id,name,slug&id=eq."+sub.community_id+"&limit=1"),
         sb("whatsapp_groups?select=id,name,group_type,invite_link&community_id=eq."+sub.community_id+"&is_active=eq.true"),
-        sb("group_memberships?select=whatsapp_group_id,status&member_id=eq."+sub.member_id),
+        sb("group_memberships?select=whatsapp_group_id,status&member_id=eq."+sub.member_id+"&order=created_at.desc"),
         sb("payments?select=payment_reference,amount,status,created_at,paid_at&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
       ]);
       const member = members[0], community = communities[0];
