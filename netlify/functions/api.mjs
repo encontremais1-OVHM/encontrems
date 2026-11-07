@@ -67,7 +67,7 @@ const iso = (date) => date.toISOString();
 async function publicCommunities() {
   const [communities, groups] = await Promise.all([
     sb("communities?select=id,name,slug,description,status&status=eq.active&order=name.asc"),
-    sb("whatsapp_groups?select=id,community_id,name,description,group_type,is_active&is_active=eq.true&order=name.asc"),
+    sb("whatsapp_groups?select=id,community_id,name,description,group_type,is_active&is_active=eq.true&group_type=eq.subgroup&order=name.asc"),
   ]);
   return { data: communities.map((c) => ({
     id: c.id, slug: c.slug, name: c.name, description: c.description, purpose: c.description,
@@ -221,7 +221,7 @@ export default async (request) => {
     if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
     if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
 
-    const publicRoute = path === "/public/registrations" && method === "POST";
+    const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET");
     const user = await requireSuperAdmin(request);
     if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
 
