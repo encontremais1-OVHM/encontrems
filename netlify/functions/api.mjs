@@ -499,15 +499,17 @@ export default async (request) => {
     if (path === "/public/registrations" && method === "POST") {
       const body = await request.json().catch(() => ({}));
       const phone = digits(body.whatsapp);
-      if (!body.full_name || String(body.full_name).trim().length < 3 || !/^\d{8,15}$/.test(phone) || !isUuid(body.community_id) || !isUuid(body.subgroup_id)) {
-        return json(422,{message:"Dados da inscrição inválidos."});
+      const rawSubgroupIds = Array.isArray(body.subgroup_ids) ? body.subgroup_ids : [body.subgroup_id];
+      const subgroupIds = [...new Set(rawSubgroupIds.filter(isUuid))];
+      if (!body.full_name || String(body.full_name).trim().length < 3 || !/^\d{8,15}$/.test(phone) || !isUuid(body.community_id) || rawSubgroupIds.length === 0 || subgroupIds.length === 0 || subgroupIds.length > 20 || rawSubgroupIds.some((id)=>!isUuid(id))) {
+        return json(422,{message:"Dados da inscrição inválidos. Escolha pelo menos um subgrupo."});
       }
-      const [community,group,plans] = await Promise.all([
+      const [community,subgroups,plans] = await Promise.all([
         sb("communities?select=id,status&id=eq."+body.community_id+"&status=eq.active"),
-        sb("whatsapp_groups?select=id,community_id,external_group_id,invite_link,group_type,is_active&id=eq."+body.subgroup_id+"&is_active=eq.true"),
+        sb("whatsapp_groups?select=id,name,community_id,external_group_id,invite_link,group_type,is_active&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
         sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
       ]);
-      if (!community.length || !group.length || group[0].community_id !== body.community_id || !plans.length) return json(422,{message:"Comunidade, subgrupo ou plano indisponível."});
+      if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis."});
       const now = new Date();
       const plan = plans[0];
       if (Number(plan.initial_price) !== 0) return json(409,{message:"O plano ainda não está configurado para adesão gratuita."});
@@ -554,9 +556,13 @@ export default async (request) => {
       const mainGroups = await sb("whatsapp_groups?select=id,external_group_id,invite_link&community_id=eq."+body.community_id+"&group_type=eq.main&is_active=eq.true&limit=1");
       const targets = [
         ...(mainGroups[0] ? [{group:mainGroups[0],kind:"community"}] : []),
-        {group:group[0],kind:"subgroup"},
+        ...subgroups.map((group)=>({group,kind:"subgroup"})),
       ];
-      const accessState = {community_invite_url:mainGroups[0]?.invite_link || null,subgroup_invite_url:group[0].invite_link || null};
+      const accessState = {
+        community_invite_url:mainGroups[0]?.invite_link || null,
+        subgroup_invite_url:subgroups.find((group)=>group.invite_link)?.invite_link || null,
+        subgroup_invite_urls:subgroups.filter((group)=>group.invite_link).map((group)=>({id:group.id,name:group.name,url:group.invite_link})),
+      };
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
@@ -623,13 +629,17 @@ export default async (request) => {
       ]);
       const member = members[0], community = communities[0];
       if (!member || digits(member.phone_e164 || member.phone) !== phone || !community) return json(404,{message:"Inscrição não encontrada."});
-      const membership = memberships.find((m)=>groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="subgroup")) || null;
-      const subgroup = groups.find((g)=>g.id===membership?.whatsapp_group_id) || null;
+      const selectedSubgroups = memberships
+        .filter((m)=>groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="subgroup"))
+        .map((m)=>groups.find((g)=>g.id===m.whatsapp_group_id))
+        .filter(Boolean);
       const mainGroup = groups.find((g)=>g.group_type==="main") || null;
       const communityJoined = memberships.some((m)=>m.status==="joined" && groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="main"));
-      const subgroupJoined = membership?.status==="joined";
       const communityInvite = mainGroup?.invite_link || null;
-      const subgroupInvite = subgroup?.invite_link || null;
+      const subgroupInviteUrls = selectedSubgroups.filter((g)=>g.invite_link).map((g)=>({id:g.id,name:g.name,url:g.invite_link}));
+      const subgroupAccessReady = selectedSubgroups.length > 0 && selectedSubgroups.every((g)=>memberships.some((m)=>m.whatsapp_group_id===g.id && m.status==="joined") || Boolean(g.invite_link));
+      const subgroupInvite = subgroupInviteUrls[0]?.url || null;
+      const subgroup = selectedSubgroups[0] || null;
       const latestPayment = payments[0];
       const payment = latestPayment ? {
         reference:latestPayment.payment_reference,amount_kz:Number(latestPayment.amount),
@@ -641,9 +651,10 @@ export default async (request) => {
         reference:sub.id,status:registrationStatus,full_name:member.full_name,created_at:sub.created_at,
         community:{name:community.name,slug:community.slug},
         subgroup:{name:subgroup?.name || "Subgrupo",slug:subgroup?.id || ""},
+        subgroups:selectedSubgroups.map((g)=>({name:g.name,slug:g.id})),
         payment,
         subscription:{status:sub.status,due_at:sub.expires_at},
-        access:{community:communityJoined || communityInvite ? "active" : "pending",subgroup:subgroupJoined || subgroupInvite ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite},
+        access:{community:communityJoined || communityInvite ? "active" : "pending",subgroup:subgroupAccessReady ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite,subgroup_invite_urls:subgroupInviteUrls},
         rejection_reason:null,
       });
     }

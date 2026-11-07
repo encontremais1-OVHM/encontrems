@@ -120,7 +120,10 @@ export interface PublicPlan {
 
 export interface RegistrationInput {
   community_id: string;
-  subgroup_id: string;
+  /** One or more selected subgroups. */
+  subgroup_ids: string[];
+  /** Backwards-compatible single subgroup field. */
+  subgroup_id?: string;
   full_name: string;
   /** E.164 digits, e.g. 244923000000 */
   whatsapp: string;
@@ -164,6 +167,7 @@ export interface RegistrationReceipt {
   access?: {
     community_invite_url: string | null;
     subgroup_invite_url: string | null;
+    subgroup_invite_urls?: Array<{id:string;name:string;url:string}>;
   };
 }
 
@@ -173,6 +177,7 @@ export interface RegistrationAccess {
   /** Only sent by the backend once access is authorised. */
   community_invite_url: string | null;
   subgroup_invite_url: string | null;
+  subgroup_invite_urls?: Array<{id:string;name:string;url:string}>;
 }
 
 export interface RegistrationStatusResponse {
@@ -182,6 +187,7 @@ export interface RegistrationStatusResponse {
   created_at: string;
   community: { name: string; slug: string };
   subgroup: { name: string; slug: string };
+  subgroups?: Array<{name:string;slug:string}>;
   payment: RegistrationPayment | null;
   subscription: { status: SubscriptionStatus; due_at: string | null } | null;
   access: RegistrationAccess | null;

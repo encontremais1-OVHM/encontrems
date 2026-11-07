@@ -39,7 +39,7 @@ export const Route = createFileRoute("/inscricao/")({
       { title: "Inscrever-me — Encontre +" },
       {
         name: "description",
-        content: "Escolha a comunidade e o subgrupo, preencha os seus dados e entre gratuitamente durante os primeiros 30 dias.",
+        content: "Escolha a comunidade e os subgrupos, preencha os seus dados e entre gratuitamente durante os primeiros 30 dias.",
       },
       { property: "og:title", content: "Inscrever-me — Encontre +" },
       {
@@ -138,7 +138,7 @@ function InscricaoPage() {
 
   const [step, setStep] = useState(0);
   const [communityId, setCommunityId] = useState<string | null>(null);
-  const [subgroupId, setSubgroupId] = useState<string | null>(null);
+  const [subgroupIds, setSubgroupIds] = useState<string[]>([]);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -147,7 +147,7 @@ function InscricaoPage() {
   const [preselected, setPreselected] = useState(false);
 
   const community: PublicCommunity | undefined = communities.find((c) => c.id === communityId);
-  const subgroup = community?.subgroups.find((s) => s.id === subgroupId);
+  const selectedSubgroups = community?.subgroups.filter((s) => subgroupIds.includes(s.id)) ?? [];
   const normalizedPhone = normalizeAngolaWhatsapp(form.whatsapp);
 
   // Preselect the community (and subgroup) passed from the catalogue.
@@ -158,7 +158,7 @@ function InscricaoPage() {
       setCommunityId(c.id);
       const s = search.subgrupo ? c.subgroups.find((x) => x.slug === search.subgrupo) : undefined;
       if (s) {
-        setSubgroupId(s.id);
+        setSubgroupIds([s.id]);
         setStep(2);
       } else {
         setStep(1);
@@ -189,13 +189,14 @@ function InscricaoPage() {
   }
 
   async function submit() {
-    if (!community || !subgroup || !normalizedPhone) return;
+    if (!community || selectedSubgroups.length === 0 || !normalizedPhone) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
       const res = await createRegistration({
         community_id: community.id,
-        subgroup_id: subgroup.id,
+        subgroup_ids: selectedSubgroups.map((s) => s.id),
+        subgroup_id: selectedSubgroups[0].id,
         full_name: form.full_name.trim(),
         whatsapp: normalizedPhone,
         email: form.email.trim() === "" ? null : form.email.trim(),
@@ -232,13 +233,13 @@ function InscricaoPage() {
     <div className="min-h-screen bg-background">
       <PublicHeader />
       <main className="mx-auto max-w-3xl px-5 py-10 sm:py-14">
-        {receipt && community && subgroup && normalizedPhone ? (
-          <Receipt receipt={receipt} communityName={community.name} subgroupName={subgroup.name} whatsapp={normalizedPhone} />
+        {receipt && community && selectedSubgroups.length > 0 && normalizedPhone ? (
+          <Receipt receipt={receipt} communityName={community.name} subgroupNames={selectedSubgroups.map((s)=>s.name)} whatsapp={normalizedPhone} />
         ) : (
           <>
             <h1 className="text-3xl font-black text-foreground sm:text-4xl">Inscrever-me</h1>
             <p className="mt-2 text-muted-foreground">
-              Escolha a comunidade e o subgrupo, preencha os seus dados e siga para o pagamento da adesão.
+              Escolha a comunidade e os subgrupos, preencha os seus dados e confirme a inscrição.
             </p>
 
             <div className="mt-8">
@@ -292,7 +293,7 @@ function InscricaoPage() {
                         key={c.id}
                         selected={c.id === communityId}
                         onSelect={() => {
-                          if (c.id !== communityId) setSubgroupId(null);
+                          if (c.id !== communityId) setSubgroupIds([]);
                           setCommunityId(c.id);
                         }}
                         title={c.name}
@@ -309,7 +310,8 @@ function InscricaoPage() {
 
                 {step === 1 && community && (
                   <section className="space-y-3 animate-in fade-in duration-300">
-                    <h2 className="text-lg font-extrabold text-foreground">Subgrupos de {community.name}</h2>
+                    <h2 className="text-lg font-extrabold text-foreground">Escolha os subgrupos de {community.name}</h2>
+                    <p className="text-sm text-muted-foreground">Pode escolher um ou vários subgrupos para integrar.</p>
                     {community.subgroups.length === 0 ? (
                       <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
                         Esta comunidade ainda não tem subgrupos abertos. Escolha outra comunidade.
@@ -318,8 +320,8 @@ function InscricaoPage() {
                       community.subgroups.map((s) => (
                         <OptionCard
                           key={s.id}
-                          selected={s.id === subgroupId}
-                          onSelect={() => setSubgroupId(s.id)}
+                          selected={subgroupIds.includes(s.id)}
+                          onSelect={() => setSubgroupIds((current)=>current.includes(s.id)?current.filter((id)=>id!==s.id):[...current,s.id])}
                           title={s.name}
                           description={s.description}
                         />
@@ -329,7 +331,7 @@ function InscricaoPage() {
                       <Button variant="ghost" onClick={() => setStep(0)}>
                         <ArrowLeft /> Voltar
                       </Button>
-                      <Button onClick={() => setStep(2)} disabled={!subgroup}>
+                      <Button onClick={() => setStep(2)} disabled={selectedSubgroups.length===0}>
                         Continuar <ArrowRight />
                       </Button>
                     </div>
@@ -433,13 +435,13 @@ function InscricaoPage() {
                   </form>
                 )}
 
-                {step === 3 && community && subgroup && (
+                {step === 3 && community && selectedSubgroups.length > 0 && (
                   <section className="space-y-5 animate-in fade-in duration-300">
                     <h2 className="text-lg font-extrabold text-foreground">Confirme a sua inscrição</h2>
                     <dl className="divide-y rounded-2xl border bg-card">
                       {[
                         ["Comunidade", community.name],
-                        ["Subgrupo", subgroup.name],
+                        ["Subgrupos", selectedSubgroups.map((s)=>s.name).join(", ")],
                         ["Nome", form.full_name.trim()],
                         ["WhatsApp", formatPhone(normalizedPhone)],
                         ["Email", form.email.trim() || "—"],
@@ -507,12 +509,12 @@ function Field({
 function Receipt({
   receipt,
   communityName,
-  subgroupName,
+  subgroupNames,
   whatsapp,
 }: {
   receipt: RegistrationReceipt;
   communityName: string;
-  subgroupName: string;
+  subgroupNames: string[];
   whatsapp: string;
 }) {
   return (
@@ -524,7 +526,7 @@ function Receipt({
         <div>
           <h1 className="text-2xl font-black text-foreground sm:text-3xl">Inscrição registada</h1>
           <p className="mt-1 text-muted-foreground">
-            {communityName} · {subgroupName}
+            {communityName} · {subgroupNames.join(", ")}
           </p>
         </div>
       </div>
@@ -539,18 +541,21 @@ function Receipt({
       <p className="text-sm text-muted-foreground">
         A adesão é gratuita durante 30 dias. Se a conta WhatsApp da comunidade estiver ligada e tiver permissões de administradora, a entrada será processada automaticamente. Caso contrário, pode usar os convites abaixo quando estiverem disponíveis.
       </p>
-      {(receipt.access?.community_invite_url || receipt.access?.subgroup_invite_url) && (
-        <div className="flex flex-col gap-3 sm:flex-row">
+      {(receipt.access?.community_invite_url || receipt.access?.subgroup_invite_url || receipt.access?.subgroup_invite_urls?.length) && (
+        <div className="flex flex-wrap gap-3">
           {receipt.access?.community_invite_url && (
             <Button asChild>
               <a href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Entrar na comunidade WhatsApp</a>
             </Button>
           )}
-          {receipt.access?.subgroup_invite_url && (
-            <Button asChild variant="outline">
-              <a href={receipt.access.subgroup_invite_url} target="_blank" rel="noopener noreferrer">Entrar no subgrupo</a>
+          {(receipt.access?.subgroup_invite_urls?.length
+            ? receipt.access.subgroup_invite_urls
+            : receipt.access?.subgroup_invite_url ? [{id:"subgroup",name:"Subgrupo",url:receipt.access.subgroup_invite_url}] : []
+          ).map((group) => (
+            <Button key={group.id} asChild variant="outline">
+              <a href={group.url} target="_blank" rel="noopener noreferrer">Entrar em {group.name}</a>
             </Button>
-          )}
+          ))}
         </div>
       )}
       <Button variant="outline" asChild>
