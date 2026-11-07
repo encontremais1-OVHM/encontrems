@@ -165,6 +165,76 @@ async function adminMembers(q) {
   return { data: rows.slice((page-1)*perPage,page*perPage), meta: { current_page: page, last_page: Math.max(1,Math.ceil(total/perPage)), per_page: perPage, total } };
 }
 
+async function adminPayments() {
+  const [payments,members] = await Promise.all([
+    sb("payments?select=id,member_id,subscription_id,amount,currency,status,payment_reference,payment_type,provider,created_at,paid_at,rejection_reason&order=created_at.desc&limit=500"),
+    sb("members?select=id,full_name,phone_e164,phone,email"),
+  ]);
+  return {data:payments.map((p)=>({
+    ...p,
+    member:members.find((m)=>m.id===p.member_id) || null,
+  }))};
+}
+
+async function confirmRenewalPayment(paymentId, adminUser) {
+  const rows = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference&id=eq."+paymentId+"&limit=1");
+  const payment = rows[0];
+  if (!payment) return {status:404,body:{message:"Pagamento não encontrado."}};
+  if (payment.status === "paid") return {status:200,body:{message:"Pagamento já confirmado."}};
+  if (payment.payment_type !== "renewal" || !payment.subscription_id) return {status:409,body:{message:"Este pagamento não é uma renovação válida."}};
+  const [subs,members] = await Promise.all([
+    sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at&id=eq."+payment.subscription_id+"&limit=1"),
+    sb("members?select=id,phone_e164,phone&id=eq."+payment.member_id+"&limit=1"),
+  ]);
+  const sub=subs[0], member=members[0];
+  if (!sub || !member || sub.member_id !== payment.member_id) return {status:409,body:{message:"A subscrição associada ao pagamento não é válida."}};
+  const plans = await sb("plans?select=renewal_price,duration_days,grace_days&id=eq."+sub.plan_id+"&limit=1");
+  const plan=plans[0];
+  if (!plan || Number(payment.amount)!==Number(plan.renewal_price) || Number(plan.renewal_price)!==1000) return {status:409,body:{message:"O valor do pagamento não corresponde à renovação de 1.000 Kz."}};
+  const now=new Date();
+  const currentExpiry=sub.expires_at ? new Date(sub.expires_at) : now;
+  const renewalStart=currentExpiry.getTime()>now.getTime()?currentExpiry:now;
+  const expires=new Date(renewalStart.getTime()+Number(plan.duration_days)*86400000);
+  const grace=new Date(expires.getTime()+Number(plan.grace_days)*86400000);
+  await sb("subscriptions?id=eq."+sub.id,{
+    method:"PATCH",
+    body:JSON.stringify({status:"active",starts_at:sub.starts_at || iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),ended_at:null,updated_at:iso(now)}),
+    headers:{Prefer:"return=minimal"},
+  });
+  await sb("payments?id=eq."+payment.id,{
+    method:"PATCH",
+    body:JSON.stringify({status:"paid",paid_at:iso(now),verified_at:iso(now),rejection_reason:null,updated_at:iso(now)}),
+    headers:{Prefer:"return=minimal"},
+  });
+  const memberships=await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq."+member.id);
+  const phone=digits(member.phone_e164 || member.phone);
+  let waConnected=false;
+  try { waConnected=(await bridge("/status")).connected===true; } catch {}
+  for(const membership of memberships){
+    if(membership.status==="joined") continue;
+    if(!waConnected || !phone){
+      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+      continue;
+    }
+    const groupRows=await sb("whatsapp_groups?select=external_group_id&id=eq."+membership.whatsapp_group_id+"&limit=1");
+    const externalGroupId=groupRows[0]?.external_group_id;
+    if(!externalGroupId) continue;
+    try{
+      await bridge("/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
+      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(now),removed_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+    }catch{
+      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+    }
+  }
+  await sb("audit_logs",{
+    method:"POST",
+    body:JSON.stringify([{user_id:adminUser.id,member_id:member.id,action:"renewal.payment_confirmed",entity_type:"payment",entity_id:payment.id,old_values:{payment_status:payment.status,subscription_status:sub.status},new_values:{payment_status:"paid",subscription_status:"active",expires_at:iso(expires)}}]),
+    headers:{Prefer:"return=minimal"},
+  });
+  return {status:200,body:{message:"Renovação confirmada.",expires_at:iso(expires)}};
+}
+
+
 async function ensureConnection(communityId, status) {
   const rows = await sb("whatsapp_connections?select=id&community_id=eq." + communityId + "&name=eq.Encontre%20%2B%20Principal&limit=1");
   if (rows[0]) {
