@@ -217,7 +217,7 @@ export default async (request) => {
   const q = Object.fromEntries(url.searchParams.entries());
   const path = q.path || "/";
   try {
-    if (path === "/health") return json(200,{status:"ok",time:iso(new Date())});
+    if (path === "/health") { await sb("plans?select=id&limit=1"); return json(200,{status:"ok",supabase:"connected",time:iso(new Date())}); }
     if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
     if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
 
