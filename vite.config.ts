@@ -4,7 +4,7 @@
 // static site is written to dist/.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-const isNetlifyBuild = process.env.NETLIFY === "true";
+const isNetlifyBuild = process.env["NETLIFY"] === "true";
 
 export default defineConfig({
   tanstackStart: {
