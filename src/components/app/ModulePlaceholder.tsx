@@ -59,7 +59,7 @@ export function ModulePlaceholder({
           <section className="rounded-xl border bg-card p-5 shadow-card">
             <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
               <Construction className="size-4 text-muted-foreground" />
-              Contrato da API segura (Netlify + Supabase)
+              Rotas previstas para esta fase
             </h2>
             <ul className="mt-3 space-y-1.5">
               {endpoints.map((e) => (
