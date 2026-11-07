@@ -19,7 +19,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Check Netlify function syntax
-        run: node --check netlify/functions/api.mjs
+        run: |
+          node --check netlify/functions/api.mjs
+          node --check netlify/functions/enforce-access.mjs
       - name: Build
         run: bun run build
         env:
