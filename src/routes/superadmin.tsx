@@ -58,10 +58,6 @@ function SuperAdminLayout() {
     };
   }, [navigate]);
 
-  async function signOut() {
-    await signOutSupabase();
-    navigate({ to: "/superadmin/entrar", replace: true });
-  }
 
   if (status === "checking") {
     return (
