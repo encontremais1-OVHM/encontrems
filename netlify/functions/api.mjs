@@ -447,7 +447,7 @@ async function confirmRenewalPayment(paymentId) {
     if(!externalGroupId) continue;
     try{
       await bridge(isCommunity ? "/communities/"+encodeURIComponent(externalGroupId)+"/participants/add" : "/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
-      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(now),removed_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(now),removed_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     }catch{
       await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     }
@@ -736,10 +736,10 @@ export default async (request) => {
       let waConnected = false;
       try { waConnected = (await bridge("/status")).connected === true; } catch { /* access remains pending until WhatsApp is available */ }
       for (const target of targets) {
-        const found = await sb("group_memberships?select=id,status&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
+        const found = await sb("group_memberships?select=id,status,external_participant_id&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
         if (!membership) {
-          const inserted = await sb("group_memberships",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,status:"pending_invitation"}]),headers:{Prefer:"return=representation"}});
+          const inserted = await sb("group_memberships",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",status:"pending_invitation"}]),headers:{Prefer:"return=representation"}});
           membership = inserted[0];
         }
         let accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
@@ -761,11 +761,11 @@ export default async (request) => {
             try {
               await bridge(target.kind === "community" ? "/communities/"+encodeURIComponent(target.group.external_group_id)+"/participants/add" : "/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
               accessStatus = "joined";
-              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
               await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "succeeded", executed_at: iso(new Date()), last_error: null, next_retry_at: null, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
             } catch (error) {
               const message = error instanceof Error ? error.message.slice(0, 300) : "Não foi possível adicionar o participante ao grupo.";
-              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
               await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "retry_pending", last_error: message, next_retry_at: iso(new Date(Date.now() + 15 * 60 * 1000)), updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
             }
           } else if (operation) {
