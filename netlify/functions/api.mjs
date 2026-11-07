@@ -137,13 +137,17 @@ async function adminResource(resource) {
     }))};
   }
   if (resource === "registrations") {
-    const [members,subscriptions] = await Promise.all([
-      sb("members?select=id,full_name,phone_e164,phone,email,city,province,status,registration_source,created_at&order=created_at.desc&limit=500"),
-      sb("subscriptions?select=member_id,status,expires_at,grace_ends_at&order=created_at.desc"),
+    const [members,subscriptions,memberships,groups] = await Promise.all([
+      sb("members?select=id,full_name,phone_e164,phone,email,city,province,status,registration_source,created_at&registration_source=eq.web&order=created_at.desc&limit=500"),
+      sb("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&order=created_at.desc"),
+      sb("group_memberships?select=member_id,whatsapp_group_id,status"),
+      sb("whatsapp_groups?select=id,name,community_id,group_type"),
     ]);
     return {data:members.map((m)=>{
       const sub=subscriptions.find((s)=>s.member_id===m.id);
-      return {...m,subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
+      const selected = memberships.filter((membership)=>membership.member_id===m.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup"));
+      const main = memberships.find((membership)=>membership.member_id===m.id && membership.status==="joined" && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="main"));
+      return {...m,community_name:groups.find((g)=>g.community_id===sub?.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>groups.find((g)=>g.id===membership.whatsapp_group_id)?.name).filter(Boolean).join(", "),community_access:main?"joined":"pending",subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
     })};
   }
   if (resource === "notifications") {
@@ -169,6 +173,116 @@ async function adminResource(resource) {
     return {data:Object.entries(summary.totals).map(([metric,value])=>({id:metric,metric,value}))};
   }
   return {data:[]};
+}
+
+
+function makeSlug(value) {
+  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+}
+
+async function writeAudit(user, action, entityType, entityId, oldValues, newValues) {
+  await sb("audit_logs", {
+    method: "POST",
+    body: JSON.stringify([{ user_id: user?.id || null, action, entity_type: entityType, entity_id: entityId, old_values: oldValues || null, new_values: newValues || null }]),
+    headers: { Prefer: "return=minimal" },
+  });
+}
+
+async function adminCreateCommunity(body, user) {
+  const name = String(body.name || "").trim();
+  const slug = makeSlug(body.slug || name);
+  const description = String(body.description || "").trim().slice(0, 1000) || null;
+  const influencerName = String(body.influencer_name || "").trim().slice(0, 120) || null;
+  const initialPrice = Number(body.initial_price ?? 0);
+  const renewalPrice = Number(body.renewal_price ?? 1000);
+  const durationDays = Number(body.duration_days ?? 30);
+  const graceDays = Number(body.grace_days ?? 5);
+  if (name.length < 2 || !slug || !Number.isSafeInteger(initialPrice) || initialPrice < 0 || !Number.isSafeInteger(renewalPrice) || renewalPrice < 0 || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 365 || !Number.isInteger(graceDays) || graceDays < 0 || graceDays > 30) {
+    return { status: 422, body: { message: "Preencha um nome, slug e plano com valores válidos." } };
+  }
+  const existing = await sb("communities?select=id&slug=eq." + encodeURIComponent(slug) + "&limit=1");
+  if (existing.length) return { status: 409, body: { message: "Já existe uma comunidade com este endereço." } };
+  const created = await sb("communities", {
+    method: "POST",
+    body: JSON.stringify([{ name, slug, description, influencer_name: influencerName, status: "inactive" }]),
+    headers: { Prefer: "return=representation" },
+  });
+  const community = created?.[0];
+  if (!community?.id) throw new Error("O Supabase não confirmou a criação da comunidade.");
+  try {
+    const plans = await sb("plans", {
+      method: "POST",
+      body: JSON.stringify([{ community_id: community.id, name: "Plano " + name, description: "Plano de adesão da comunidade " + name, initial_price: initialPrice, renewal_price: renewalPrice, currency: "AOA", duration_days: durationDays, grace_days: graceDays, is_active: true }]),
+      headers: { Prefer: "return=representation" },
+    });
+    await writeAudit(user, "community.created", "community", community.id, null, { name, slug, status: "inactive", plan_id: plans?.[0]?.id || null });
+    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe o grupo principal e os subgrupos antes de a publicar." } };
+  } catch (error) {
+    await sb("communities?id=eq." + community.id, { method: "PATCH", body: JSON.stringify({ status: "inactive" }), headers: { Prefer: "return=minimal" } });
+    throw error;
+  }
+}
+
+async function adminUpdateCommunity(communityId, body, user) {
+  if (!isUuid(communityId)) return { status: 422, body: { message: "Identificador de comunidade inválido." } };
+  const rows = await sb("communities?select=id,name,slug,description,influencer_name,status&id=eq." + communityId + "&limit=1");
+  const current = rows[0];
+  if (!current) return { status: 404, body: { message: "Comunidade não encontrada." } };
+  const patch = {};
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (name.length < 2) return { status: 422, body: { message: "O nome deve ter pelo menos 2 caracteres." } };
+    patch.name = name;
+  }
+  if (body.description !== undefined) patch.description = String(body.description || "").trim().slice(0, 1000) || null;
+  if (body.influencer_name !== undefined) patch.influencer_name = String(body.influencer_name || "").trim().slice(0, 120) || null;
+  if (body.status !== undefined) {
+    if (!["active", "inactive"].includes(body.status)) return { status: 422, body: { message: "Estado de comunidade inválido." } };
+    if (body.status === "active") {
+      const [main, subgroups, plans] = await Promise.all([
+        sb("whatsapp_groups?select=id,external_group_id&community_id=eq." + communityId + "&group_type=eq.main&is_active=eq.true"),
+        sb("whatsapp_groups?select=id&community_id=eq." + communityId + "&group_type=eq.subgroup&is_active=eq.true"),
+        sb("plans?select=id&community_id=eq." + communityId + "&is_active=eq.true&limit=1"),
+      ]);
+      if (main.length !== 1 || !main[0].external_group_id) return { status: 409, body: { message: "Antes de publicar, defina exatamente um grupo principal ativo e sincronizado com o WhatsApp." } };
+      if (!subgroups.length) return { status: 409, body: { message: "Antes de publicar, disponibilize pelo menos um subgrupo ativo." } };
+      if (!plans.length) return { status: 409, body: { message: "Esta comunidade ainda não tem um plano ativo." } };
+    }
+    patch.status = body.status;
+  }
+  if (!Object.keys(patch).length) return { status: 422, body: { message: "Não foram fornecidas alterações." } };
+  patch.updated_at = iso(new Date());
+  await sb("communities?id=eq." + communityId, { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } });
+  await writeAudit(user, "community.updated", "community", communityId, current, patch);
+  return { status: 200, body: { message: "Comunidade atualizada.", data: { ...current, ...patch } } };
+}
+
+async function adminUpdateGroup(groupId, body, user) {
+  if (!isUuid(groupId)) return { status: 422, body: { message: "Identificador de grupo inválido." } };
+  const rows = await sb("whatsapp_groups?select=id,community_id,name,group_type,is_active,external_group_id&id=eq." + groupId + "&limit=1");
+  const current = rows[0];
+  if (!current) return { status: 404, body: { message: "Grupo não encontrado." } };
+  const communityId = body.community_id === undefined ? current.community_id : body.community_id;
+  if (!isUuid(communityId)) return { status: 422, body: { message: "Escolha uma comunidade válida." } };
+  const communities = await sb("communities?select=id&id=eq." + communityId + "&limit=1");
+  if (!communities.length) return { status: 404, body: { message: "Comunidade não encontrada." } };
+  const groupType = body.group_type === undefined ? current.group_type : body.group_type;
+  const isActive = body.is_active === undefined ? current.is_active : body.is_active;
+  if (!["main", "subgroup"].includes(groupType) || typeof isActive !== "boolean") return { status: 422, body: { message: "Tipo ou visibilidade do grupo inválidos." } };
+  if (groupType === "main" && (!isActive || !current.external_group_id)) return { status: 409, body: { message: "O grupo principal precisa estar ativo e sincronizado com o WhatsApp." } };
+  if (groupType === "main") {
+    await sb("whatsapp_groups?community_id=eq." + communityId + "&group_type=eq.main&id=neq." + groupId, {
+      method: "PATCH", body: JSON.stringify({ group_type: "subgroup", updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" },
+    });
+  }
+  const patch = { community_id: communityId, group_type: groupType, is_active: isActive, updated_at: iso(new Date()) };
+  await sb("whatsapp_groups?id=eq." + groupId, { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } });
+  if (current.group_type === "main" && (groupType !== "main" || !isActive)) {
+    const remaining = await sb("whatsapp_groups?select=id&community_id=eq." + current.community_id + "&group_type=eq.main&is_active=eq.true");
+    if (!remaining.length) await sb("communities?id=eq." + current.community_id, { method: "PATCH", body: JSON.stringify({ status: "inactive", updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+  }
+  await writeAudit(user, "whatsapp_group.settings_updated", "whatsapp_group", groupId, current, patch);
+  return { status: 200, body: { message: "Grupo atualizado.", data: { ...current, ...patch } } };
 }
 
 async function adminDashboard() {
@@ -415,6 +529,17 @@ export default async (request) => {
     const user = await requireSuperAdmin(request);
     if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
 
+    if (path === "/admin/communities" && method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const result = await adminCreateCommunity(body, user);
+      return json(result.status, result.body);
+    }
+    const communityAction = path.match(/^\\/admin\\/communities\\/([0-9a-f-]{36})$/i);
+    if (communityAction && method === "PATCH") {
+      const body = await request.json().catch(() => ({}));
+      const result = await adminUpdateCommunity(communityAction[1], body, user);
+      return json(result.status, result.body);
+    }
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
     const resourceMatch = path.match(/^\/admin\/resources\/(subscriptions|audit|communities|access|registrations|notifications|plans|users|reports)$/);
     if (resourceMatch && method === "GET") return json(200,await adminResource(resourceMatch[1]));
@@ -463,6 +588,12 @@ export default async (request) => {
         participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
       }))});
     }
+    const groupSettings = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})\\/settings$/i);
+    if (groupSettings && method === "PATCH") {
+      const body = await request.json().catch(() => ({}));
+      const result = await adminUpdateGroup(groupSettings[1], body, user);
+      return json(result.status, result.body);
+    }
     if (path.startsWith("/admin/whatsapp/groups/") && path.endsWith("/type") && method === "PATCH") {
       const groupId = path.slice("/admin/whatsapp/groups/".length, -"/type".length);
       const body = await request.json().catch(() => ({}));
@@ -504,12 +635,14 @@ export default async (request) => {
       if (!body.full_name || String(body.full_name).trim().length < 3 || !/^\d{8,15}$/.test(phone) || !isUuid(body.community_id) || rawSubgroupIds.length === 0 || subgroupIds.length === 0 || subgroupIds.length > 20 || rawSubgroupIds.some((id)=>!isUuid(id))) {
         return json(422,{message:"Dados da inscrição inválidos. Escolha pelo menos um subgrupo."});
       }
-      const [community,subgroups,plans] = await Promise.all([
+      const [community,subgroups,mainGroups,plans] = await Promise.all([
         sb("communities?select=id,status&id=eq."+body.community_id+"&status=eq.active"),
         sb("whatsapp_groups?select=id,name,community_id,external_group_id,invite_link,group_type,is_active&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
+        sb("whatsapp_groups?select=id,name,external_group_id,invite_link,group_type,is_active&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.main"),
         sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
       ]);
       if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis."});
+      if (mainGroups.length !== 1 || !mainGroups[0].external_group_id) return json(409,{message:"Esta comunidade ainda não tem um único grupo principal ativo e sincronizado. Contacte a equipa Encontre +."});
       const now = new Date();
       const plan = plans[0];
       if (Number(plan.initial_price) !== 0) return json(409,{message:"O plano ainda não está configurado para adesão gratuita."});
@@ -553,16 +686,13 @@ export default async (request) => {
         const createdSubscription = await sb("subscriptions",{method:"POST",body:JSON.stringify([{member_id:member.id,community_id:body.community_id,plan_id:plan.id,status:"active",starts_at:iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),activated_at:iso(now)}]),headers:{Prefer:"return=representation"}});
         subscriptionId = createdSubscription[0].id;
       }
-      const mainGroups = await sb("whatsapp_groups?select=id,external_group_id,invite_link&community_id=eq."+body.community_id+"&group_type=eq.main&is_active=eq.true&limit=1");
       const targets = [
-        ...(mainGroups[0] ? [{group:mainGroups[0],kind:"community"}] : []),
+        {group:mainGroups[0],kind:"community"},
         ...subgroups.map((group)=>({group,kind:"subgroup"})),
       ];
-      const accessState = {
-        community_invite_url:mainGroups[0]?.invite_link || null,
-        subgroup_invite_url:subgroups.find((group)=>group.invite_link)?.invite_link || null,
-        subgroup_invite_urls:subgroups.filter((group)=>group.invite_link).map((group)=>({id:group.id,name:group.name,url:group.invite_link})),
-      };
+      const accessResults = [];
+      let waConnected = false;
+      try { waConnected = (await bridge("/status")).connected === true; } catch { /* access remains pending until WhatsApp is available */ }
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
@@ -570,18 +700,28 @@ export default async (request) => {
           const inserted = await sb("group_memberships",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,status:"pending_invitation"}]),headers:{Prefer:"return=representation"}});
           membership = inserted[0];
         }
-        if (membership.status !== "joined" && target.group.external_group_id) {
+        let accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
+        if (accessStatus !== "joined" && waConnected && target.group.external_group_id) {
           try {
-            const waStatus = await bridge("/status");
-            if (waStatus.connected) {
-              await bridge("/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
-              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
-            }
-          } catch {
-            // Keep access pending; the user can use a valid invite link when available.
+            await bridge("/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
+            accessStatus = "joined";
+            await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+          } catch (error) {
+            await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
           }
         }
+        accessResults.push({id:target.group.id,name:target.group.name,kind:target.kind,status:accessStatus,invite_url:target.group.invite_link || null});
       }
+      const communityAccess = accessResults.find((item)=>item.kind==="community");
+      const subgroupAccess = accessResults.filter((item)=>item.kind==="subgroup");
+      const accessState = {
+        community: communityAccess?.status || "pending_invitation",
+        subgroups: subgroupAccess,
+        community_invite_url: communityAccess?.invite_url || null,
+        subgroup_invite_url: subgroupAccess.find((item)=>item.invite_url)?.invite_url || null,
+        subgroup_invite_urls: subgroupAccess.filter((item)=>item.invite_url).map((item)=>({id:item.id,name:item.name,url:item.invite_url})),
+      };
+      await writeAudit(null,"registration.created","registration",subscriptionId,null,{member_id:member.id,community_id:body.community_id,subgroup_ids:subgroupIds,access:accessState});
       return json(201,{reference:subscriptionId,status:"approved",payment:{reference:subscriptionId,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null},access:accessState});
     }
     if (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST") {
