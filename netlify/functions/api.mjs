@@ -199,9 +199,19 @@ function makeSlug(value) {
 }
 
 async function writeAudit(user, action, entityType, entityId, oldValues, newValues, memberId = null) {
+  // Supabase Auth users and public.users are separate identity stores. The
+  // audit_logs.user_id FK targets public.users(id), never auth.users(id).
+  let auditUserId = null;
+  if (user?.email) {
+    const mappedUsers = await sb("users?select=id&email=eq." + encodeURIComponent(String(user.email).trim()) + "&limit=1");
+    auditUserId = mappedUsers?.[0]?.id || null;
+  }
+  const auditNewValues = user?.email && !auditUserId
+    ? { ...(newValues && typeof newValues === "object" && !Array.isArray(newValues) ? newValues : {}), audit_actor_email: user.email, audit_actor_source: "supabase_auth" }
+    : (newValues || null);
   await sb("audit_logs", {
     method: "POST",
-    body: JSON.stringify([{ user_id: user?.id || null, member_id: memberId, action, entity_type: entityType, entity_id: entityId, old_values: oldValues || null, new_values: newValues || null }]),
+    body: JSON.stringify([{ user_id: auditUserId, member_id: memberId, action, entity_type: entityType, entity_id: entityId, old_values: oldValues || null, new_values: auditNewValues }]),
     headers: { Prefer: "return=minimal" },
   });
 }
