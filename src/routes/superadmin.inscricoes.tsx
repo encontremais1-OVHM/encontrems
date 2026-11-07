@@ -1,31 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { UserPlus } from "lucide-react";
-
-import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
+import { AdminResourceList } from "@/components/app/AdminResourceList";
 
 export const Route = createFileRoute("/superadmin/inscricoes")({
-  head: () => ({
-    meta: [
-      { title: "Inscrições — Encontre +" },
-      { name: "description", content: "Pedidos de adesão recebidos pelo formulário público e respetivo estado de pagamento." },
-      { property: "og:title", content: "Inscrições — Encontre +" },
-      { property: "og:description", content: "Pedidos de adesão recebidos pelo formulário público e respetivo estado de pagamento." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: InscricoesPage,
+  head: () => ({ meta: [{ title: "Inscrições — Encontre +" }] }),
+  component: () => <AdminResourceList resource="registrations" title="Inscrições" description="Registos reais de membros, origem da inscrição e situação da subscrição." columns={[{"key":"full_name","label":"Nome"},{"key":"phone_e164","label":"WhatsApp"},{"key":"email","label":"Email"},{"key":"province","label":"Província"},{"key":"city","label":"Cidade"},{"key":"subscription_status","label":"Subscrição"},{"key":"registration_source","label":"Origem"},{"key":"created_at","label":"Registado em"}]} />,
 });
-
-function InscricoesPage() {
-  return (
-    <ModulePlaceholder
-      icon={UserPlus}
-      title="Inscrições"
-      description="Pedidos de adesão recebidos pelo formulário público e respetivo estado de pagamento."
-      phase={3}
-      features={["Lista de inscrições com estado (pendente, paga, rejeitada)", "Validação de número WhatsApp único", "Associação de interesses aos subgrupos", "Ativação da assinatura após pagamento confirmado"]}
-      endpoints={["POST /public/registrations", "GET /admin/registrations", "GET /admin/registrations/{id}"]}
-    />
-  );
-}
