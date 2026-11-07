@@ -272,7 +272,7 @@ async function adminUpdateGroup(groupId, body, user) {
   const groupType = body.group_type === undefined ? current.group_type : body.group_type;
   const isActive = body.is_active === undefined ? current.is_active : body.is_active;
   if (!["main", "subgroup"].includes(groupType) || typeof isActive !== "boolean") return { status: 422, body: { message: "Tipo ou visibilidade do grupo inválidos." } };
-  if (groupType === "main" && (!isActive || !current.external_group_id)) return { status: 409, body: { message: "O grupo principal precisa estar ativo e sincronizado com o WhatsApp." } };
+  if (groupType === "main" && !current.external_group_id) return { status: 409, body: { message: "O grupo principal precisa estar sincronizado com o WhatsApp." } };
   if (groupType === "main") {
     await sb("whatsapp_groups?community_id=eq." + communityId + "&group_type=eq.main&id=neq." + groupId, {
       method: "PATCH", body: JSON.stringify({ group_type: "subgroup", updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" },
