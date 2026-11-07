@@ -69,16 +69,27 @@ async function publicCommunities() {
     sb("communities?select=id,name,slug,description,status,image_url,whatsapp_community_id&status=eq.active&order=name.asc"),
     sb("whatsapp_groups?select=id,community_id,name,description,group_type,is_active,image_url&is_active=eq.true&order=name.asc"),
   ]);
-  return { data: communities.map((community) => {
+  const data = communities.flatMap((community) => {
     const container = groups.find((group) => group.community_id === community.id && group.group_type === "community");
-    return {
-      id: community.id, slug: community.slug, name: community.name,
-      description: community.description, purpose: community.description,
-      image_url: community.image_url || container?.image_url || null,
-      subgroups: groups.filter((group) => group.community_id === community.id && group.group_type === "subgroup")
-        .map((group) => ({ id: group.id, slug: group.id, name: group.name, description: group.description, image_url: group.image_url || null })),
-    };
-  }) };
+    const subgroups = groups.filter((group) => group.community_id === community.id && group.group_type === "subgroup");
+    if (!container || subgroups.length === 0) return [];
+    return [{
+      id: community.id,
+      slug: community.slug,
+      name: community.name,
+      description: community.description,
+      purpose: community.description,
+      image_url: community.image_url || container.image_url || null,
+      subgroups: subgroups.map((group) => ({
+        id: group.id,
+        slug: group.id,
+        name: group.name,
+        description: group.description,
+        image_url: group.image_url || null,
+      })),
+    }];
+  });
+  return { data };
 }
 
 async function publicPlan() {
@@ -280,6 +291,10 @@ async function adminUpdateGroup(groupId, body, user) {
   if (!current.external_group_id) return { status: 409, body: { message: "Este registo ainda não está sincronizado com o WhatsApp." } };
   if (current.group_type === "community" && groupType !== "community") return { status: 409, body: { message: "O contentor da Comunidade WhatsApp não pode ser convertido num subgrupo." } };
   if (groupType === "community" && current.linked_parent_id) return { status: 422, body: { message: "Só uma Comunidade WhatsApp detetada como contentor pode ser marcada como Comunidade principal." } };
+  if (groupType === "subgroup" && current.linked_parent_id) {
+    const parentRows = await sb("whatsapp_groups?select=community_id,group_type&external_group_id=eq." + encodeURIComponent(current.linked_parent_id) + "&group_type=eq.community&limit=1");
+    if (!parentRows[0] || parentRows[0].community_id !== communityId) return { status: 409, body: { message: "Este subgrupo pertence a outra Comunidade WhatsApp. Associe-o à mesma comunidade da plataforma que o contentor principal." } };
+  }
   if (groupType === "community") {
     const duplicates = await sb("whatsapp_groups?select=id&community_id=eq." + communityId + "&group_type=eq.community&id=neq." + groupId + "&limit=1");
     if (duplicates.length) return { status: 409, body: { message: "Esta comunidade da plataforma já tem uma Comunidade WhatsApp associada." } };
