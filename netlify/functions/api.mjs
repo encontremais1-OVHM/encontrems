@@ -132,8 +132,7 @@ async function adminDashboard() {
   };
 }
 
-async function adminMembers(event) {
-  const q = event.queryStringParameters || {};
+async function adminMembers(q) {
   const page = Math.max(1, Number(q.page || 1));
   const perPage = 25;
   const [members, subscriptions, memberships] = await Promise.all([
@@ -227,7 +226,7 @@ export default async (request) => {
     if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
 
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
-    if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(event));
+    if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(q));
     if (path === "/admin/whatsapp/status" && method === "GET") {
       const status = await bridge("/status");
       return json(200,status);
@@ -257,7 +256,7 @@ export default async (request) => {
     }
     if (path === "/admin/whatsapp/disconnect" && method === "POST") return json(200,await bridge("/disconnect","POST",{}));
     if (path === "/admin/whatsapp/sync" && method === "POST") {
-      const body = JSON.parse(event.body || "{}");
+      const body = await request.json().catch(() => ({}));
       const communities = await sb("communities?select=id&status=eq.active&limit=1");
       const communityId = isUuid(body.community_id) ? body.community_id : communities[0]?.id;
       if (!communityId) return json(409,{message:"Crie uma comunidade ativa antes de sincronizar os grupos."});
@@ -265,7 +264,7 @@ export default async (request) => {
       return json(200,result);
     }
     if (path === "/public/registrations" && method === "POST") {
-      const body = JSON.parse(event.body || "{}");
+      const body = await request.json().catch(() => ({}));
       const phone = digits(body.whatsapp);
       if (!body.full_name || String(body.full_name).trim().length < 3 || !/^\d{8,15}$/.test(phone) || !isUuid(body.community_id) || !isUuid(body.subgroup_id)) {
         return json(422,{message:"Dados da inscrição inválidos."});
