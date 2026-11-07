@@ -195,11 +195,12 @@ async function adminCreateCommunity(body, user) {
   const slug = makeSlug(body.slug || name);
   const description = String(body.description || "").trim().slice(0, 1000) || null;
   const influencerName = String(body.influencer_name || "").trim().slice(0, 120) || null;
-  const initialPrice = Number(body.initial_price ?? 0);
-  const renewalPrice = Number(body.renewal_price ?? 1000);
-  const durationDays = Number(body.duration_days ?? 30);
-  const graceDays = Number(body.grace_days ?? 5);
-  if (name.length < 2 || !slug || !Number.isSafeInteger(initialPrice) || initialPrice < 0 || !Number.isSafeInteger(renewalPrice) || renewalPrice < 0 || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 365 || !Number.isInteger(graceDays) || graceDays < 0 || graceDays > 30) {
+  // The current registration/payment flow supports the existing Encontre + tariff only.
+  const initialPrice = 0;
+  const renewalPrice = 1000;
+  const durationDays = 30;
+  const graceDays = 5;
+  if (name.length < 2 || !slug) {
     return { status: 422, body: { message: "Preencha um nome, slug e plano com valores válidos." } };
   }
   const existing = await sb("communities?select=id&slug=eq." + encodeURIComponent(slug) + "&limit=1");
