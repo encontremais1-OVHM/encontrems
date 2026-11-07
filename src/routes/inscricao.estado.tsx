@@ -154,7 +154,7 @@ function EstadoPage() {
                 <div>
                   <p className="font-display text-xl font-extrabold text-foreground">{data.full_name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {data.community.name} · {data.subgroup.name}
+                    {data.community.name} · {(data.subgroups?.length ? data.subgroups.map((g)=>g.name) : [data.subgroup.name]).join(", ")}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Inscrição {data.reference} · {formatDate(data.created_at)}
@@ -226,8 +226,8 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ links }: { links: { community: string | null; subgroup: string | null } }) {
-  if (!links.community && !links.subgroup) return null;
+function WhatsAppAccess({ links }: { links: { community: string | null; subgroup: string | null; subgroups:Array<{id:string;name:string;url:string}> } }) {
+  if (!links.community && links.subgroups.length===0) return null;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
       <p className="flex items-center gap-2 font-display text-lg font-extrabold text-foreground">
@@ -244,13 +244,13 @@ function WhatsAppAccess({ links }: { links: { community: string | null; subgroup
             </a>
           </Button>
         )}
-        {links.subgroup && (
-          <Button asChild variant="outline">
-            <a href={links.subgroup} target="_blank" rel="noopener noreferrer">
-              Entrar no subgrupo
+        {links.subgroups.map((group) => (
+          <Button key={group.id} asChild variant="outline">
+            <a href={group.url} target="_blank" rel="noopener noreferrer">
+              Entrar em {group.name}
             </a>
           </Button>
-        )}
+        ))}
       </div>
     </section>
   );
