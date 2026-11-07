@@ -176,7 +176,7 @@ async function adminPayments() {
   }))};
 }
 
-async function confirmRenewalPayment(paymentId, adminUser) {
+async function confirmRenewalPayment(paymentId) {
   const rows = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference&id=eq."+paymentId+"&limit=1");
   const payment = rows[0];
   if (!payment) return {status:404,body:{message:"Pagamento não encontrado."}};
@@ -228,7 +228,7 @@ async function confirmRenewalPayment(paymentId, adminUser) {
   }
   await sb("audit_logs",{
     method:"POST",
-    body:JSON.stringify([{user_id:adminUser.id,member_id:member.id,action:"renewal.payment_confirmed",entity_type:"payment",entity_id:payment.id,old_values:{payment_status:payment.status,subscription_status:sub.status},new_values:{payment_status:"paid",subscription_status:"active",expires_at:iso(expires)}}]),
+    body:JSON.stringify([{member_id:member.id,action:"renewal.payment_confirmed",entity_type:"payment",entity_id:payment.id,old_values:{payment_status:payment.status,subscription_status:sub.status},new_values:{payment_status:"paid",subscription_status:"active",expires_at:iso(expires)}}]),
     headers:{Prefer:"return=minimal"},
   });
   return {status:200,body:{message:"Renovação confirmada.",expires_at:iso(expires)}};
@@ -323,7 +323,7 @@ export default async (request) => {
     const paymentAction = path.match(/^\/admin\/payments\/([0-9a-f-]{36})\/(confirm|reject)$/i);
     if (paymentAction && method === "POST") {
       if (paymentAction[2] === "confirm") {
-        const result = await confirmRenewalPayment(paymentAction[1],user);
+        const result = await confirmRenewalPayment(paymentAction[1]);
         return json(result.status,result.body);
       }
       const rows = await sb("payments?select=id,status,member_id&id=eq."+paymentAction[1]+"&limit=1");
@@ -339,7 +339,7 @@ export default async (request) => {
       });
       await sb("audit_logs",{
         method:"POST",
-        body:JSON.stringify([{user_id:user.id,member_id:payment.member_id,action:"renewal.payment_rejected",entity_type:"payment",entity_id:payment.id,new_values:{status:"rejected",reason}}]),
+        body:JSON.stringify([{member_id:payment.member_id,action:"renewal.payment_rejected",entity_type:"payment",entity_id:payment.id,new_values:{status:"rejected",reason}}]),
         headers:{Prefer:"return=minimal"},
       });
       return json(200,{message:"Pagamento rejeitado."});
