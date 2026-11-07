@@ -283,28 +283,27 @@ export default async (event) => {
       });
       const member = memberRows[0];
       const existing = await sb("subscriptions?select=id,status,expires_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&status=in.(pending,active,grace_period,suspended)&limit=1");
-      if (!existing.length) {
-        await sb("subscriptions",{method:"POST",body:JSON.stringify([{member_id:member.id,community_id:body.community_id,plan_id:plan.id,status:"active",starts_at:iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),activated_at:iso(now)}]),headers:{Prefer:"return=minimal"}});
-      }
-      await sb("group_memberships?on_conflict=member_id,whatsapp_group_id",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:body.subgroup_id,status:"pending_invitation"}]),headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
       let subscriptionId = existing[0]?.id;
       if (!subscriptionId) {
         const createdSubscription = await sb("subscriptions",{method:"POST",body:JSON.stringify([{member_id:member.id,community_id:body.community_id,plan_id:plan.id,status:"active",starts_at:iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),activated_at:iso(now)}]),headers:{Prefer:"return=representation"}});
         subscriptionId = createdSubscription[0].id;
       }
-      const memberships = await sb("group_memberships?on_conflict=member_id,whatsapp_group_id",{
-        method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:body.subgroup_id,status:"pending_invitation"}]),
-        headers:{Prefer:"resolution=merge-duplicates,return=representation"},
-      });
-      const membership = memberships[0];
-      try {
-        const waStatus = await bridge("/status");
-        if (waStatus.connected) {
-          await bridge("/groups/"+encodeURIComponent(group[0].id)+"/participants/add","POST",{phone});
-          await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+      const foundMembership = await sb("group_memberships?select=id,status&member_id=eq."+member.id+"&whatsapp_group_id=eq."+body.subgroup_id+"&limit=1");
+      let membership = foundMembership[0];
+      if (!membership) {
+        const inserted = await sb("group_memberships",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:body.subgroup_id,status:"pending_invitation"}]),headers:{Prefer:"return=representation"}});
+        membership = inserted[0];
+      }
+      if (membership.status !== "joined") {
+        try {
+          const waStatus = await bridge("/status");
+          if (waStatus.connected) {
+            await bridge("/groups/"+encodeURIComponent(group[0].id)+"/participants/add","POST",{phone});
+            await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+          }
+        } catch {
+          // Keep access pending until the WhatsApp connection and group permissions are available.
         }
-      } catch {
-        // Keep access pending until the WhatsApp connection and group permissions are available.
       }
       return json(201,{reference:subscriptionId,status:"approved",payment:{reference:subscriptionId,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
     }
