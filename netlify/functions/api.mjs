@@ -267,7 +267,7 @@ async function adminUpdateCommunity(communityId, body, user) {
 
 async function adminUpdateGroup(groupId, body, user) {
   if (!isUuid(groupId)) return { status: 422, body: { message: "Identificador de grupo inválido." } };
-  const rows = await sb("whatsapp_groups?select=id,community_id,name,group_type,is_active,external_group_id&id=eq." + groupId + "&limit=1");
+  const rows = await sb("whatsapp_groups?select=id,community_id,name,group_type,is_active,external_group_id,linked_parent_id&id=eq." + groupId + "&limit=1");
   const current = rows[0];
   if (!current) return { status: 404, body: { message: "Grupo não encontrado." } };
   const communityId = body.community_id === undefined ? current.community_id : body.community_id;
@@ -278,6 +278,8 @@ async function adminUpdateGroup(groupId, body, user) {
   const isActive = body.is_active === undefined ? current.is_active : body.is_active;
   if (!["community", "subgroup"].includes(groupType) || typeof isActive !== "boolean") return { status: 422, body: { message: "Escolha se este registo representa a Comunidade ou um subgrupo." } };
   if (!current.external_group_id) return { status: 409, body: { message: "Este registo ainda não está sincronizado com o WhatsApp." } };
+  if (current.group_type === "community" && groupType !== "community") return { status: 409, body: { message: "O contentor da Comunidade WhatsApp não pode ser convertido num subgrupo." } };
+  if (groupType === "community" && current.linked_parent_id) return { status: 422, body: { message: "Só uma Comunidade WhatsApp detetada como contentor pode ser marcada como Comunidade principal." } };
   if (groupType === "community") {
     const duplicates = await sb("whatsapp_groups?select=id&community_id=eq." + communityId + "&group_type=eq.community&id=neq." + groupId + "&limit=1");
     if (duplicates.length) return { status: 409, body: { message: "Esta comunidade da plataforma já tem uma Comunidade WhatsApp associada." } };
