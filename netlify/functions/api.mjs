@@ -144,11 +144,12 @@ async function adminResource(resource) {
       sb("whatsapp_groups?select=id,name,community_id,group_type"),
       sb("communities?select=id,name"),
     ]);
-    return {data:members.map((m)=>{
-      const sub=subscriptions.find((s)=>s.member_id===m.id);
-      const selected = memberships.filter((membership)=>membership.member_id===m.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup" && group.community_id===sub?.community_id));
-      const main = memberships.find((membership)=>membership.member_id===m.id && membership.status==="joined" && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="main"));
-      return {...m,community_name:communities.find((community)=>community.id===sub?.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>({name:groups.find((g)=>g.id===membership.whatsapp_group_id)?.name || "Grupo",status:membership.status})),community_access:main?"joined":"pending",subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
+    const memberById = new Map(members.map((member)=>[member.id,member]));
+    return {data:subscriptions.filter((sub)=>memberById.has(sub.member_id)).map((sub)=>{
+      const member = memberById.get(sub.member_id);
+      const selected = memberships.filter((membership)=>membership.member_id===member.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup" && group.community_id===sub.community_id));
+      const main = memberships.find((membership)=>membership.member_id===member.id && membership.status==="joined" && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="main" && group.community_id===sub.community_id));
+      return {...member,subscription_id:sub.id,community_name:communities.find((community)=>community.id===sub.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>({name:groups.find((g)=>g.id===membership.whatsapp_group_id)?.name || "Grupo",status:membership.status})),community_access:main?"joined":"pending",subscription_status:sub.status || "sem_subscrição",expires_at:sub.expires_at || null,created_at:sub.created_at || member.created_at};
     })};
   }
   if (resource === "notifications") {
