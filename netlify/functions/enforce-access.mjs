@@ -34,7 +34,6 @@ async function bridge(path, body) {
 }
 
 const iso = (d) => d.toISOString();
-const chunk = (items, size = 50) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
 
 export default async (_request) => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
@@ -71,31 +70,39 @@ export default async (_request) => {
       const existingOps = await db("access_operations?select=id,status,attempts&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
       let operation = existingOps[0];
 
-      if (membership.status === "joined") {
-        if (operation?.status === "succeeded") continue;
-        if (!operation) {
-          const created = await db("access_operations", {
-            method: "POST",
-            body: JSON.stringify([{
-              member_id: membership.member_id,
-              whatsapp_group_id: membership.whatsapp_group_id,
-              operation_type: "remove",
-              status: "queued",
-              idempotency_key: idempotencyKey,
-              attempts: 0,
-            }]),
-            headers: { Prefer: "return=representation" },
+      if (operation?.status === "succeeded") {
+        if (membership.status !== "removed") {
+          await db("group_memberships?id=eq." + membership.id, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "removed", removed_at: nowIso, updated_at: nowIso }),
+            headers: { Prefer: "return=minimal" },
           });
-          operation = created[0];
         }
+        continue;
+      }
+      if (!operation) {
+        const created = await db("access_operations", {
+          method: "POST",
+          body: JSON.stringify([{
+            member_id: membership.member_id,
+            whatsapp_group_id: membership.whatsapp_group_id,
+            operation_type: "remove",
+            status: "queued",
+            idempotency_key: idempotencyKey,
+            attempts: 0,
+          }]),
+          headers: { Prefer: "return=representation" },
+        });
+        operation = created[0];
+      }
+      if (membership.status === "joined") {
         await db("group_memberships?id=eq." + membership.id, {
           method: "PATCH",
           body: JSON.stringify({ status: "removal_pending", updated_at: nowIso }),
           headers: { Prefer: "return=minimal" },
         });
       }
-
-      if (!operation || operation.status === "succeeded") continue;
+      if (!operation) continue;
       if (!bridgeConnected || !membership.external_participant_id) {
         const message = !bridgeConnected ? "WhatsApp desconectado; remoção aguarda reconexão." : "Identificador do participante não disponível.";
         await db("access_operations?id=eq." + operation.id, {
@@ -113,7 +120,10 @@ export default async (_request) => {
         headers: { Prefer: "return=minimal" },
       });
       try {
-        await bridge("/groups/" + encodeURIComponent((await db("whatsapp_groups?select=external_group_id&id=eq." + membership.whatsapp_group_id + "&limit=1"))[0]?.external_group_id || "") + "/participants/remove", {
+        const groupRows = await db("whatsapp_groups?select=external_group_id&id=eq." + membership.whatsapp_group_id + "&limit=1");
+        const externalGroupId = groupRows[0]?.external_group_id;
+        if (!externalGroupId) throw new Error("Identificador do grupo WhatsApp não disponível.");
+        await bridge("/groups/" + encodeURIComponent(externalGroupId) + "/participants/remove", {
           participant: membership.external_participant_id,
         });
         await db("group_memberships?id=eq." + membership.id, {
