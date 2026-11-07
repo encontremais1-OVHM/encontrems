@@ -31,13 +31,11 @@ use the editor.
 
 ## Project rules (Encontre +)
 
-- Never enable Lovable Cloud or any Lovable-managed database: the owner runs Laravel + external Supabase + Railway; the browser only talks to the Laravel API.
-- Frontend lives at repo root (Lovable requirement); Laravel goes in `backend/`, WhatsApp service in `whatsapp-bridge/`, docs in `docs/` — keeps responsibilities separated in one repo.
-- All HTTP calls go through `src/lib/api/client.ts` with types in `src/lib/api/types.ts`, mirrored in `docs/API_CONTRACT.md` — one contract the Laravel team implements against.
-- Money is integer Kwanza (`*_kz`) end to end and formatted with `src/lib/format.ts`; dates render in Africa/Luanda — avoids float errors and timezone drift.
-- Financial/subscription state is computed only by the backend; `src/lib/plan-defaults.ts` is display-only fallback copy.
-- Modules not yet built render `ModulePlaceholder` (features + API contract) instead of fake data or dead buttons.
-- WhatsApp/Bider and payment gateways sit behind replaceable adapters; never implement provider endpoints before the official docs are supplied.
-- The admin panel lives under `/superadmin/*` (login at `/superadmin/entrar`, file `superadmin_.entrar.tsx`) and renders only for `super_admin`; the Laravel API is the real gate (401/403 on `/admin/*`) — the client gate only avoids rendering the panel.
-- Public catalogue, sign-up and status pages read communities/subgroups from `/public/*` endpoints; hero tiles in `src/components/public/hero-groups.ts` are illustrative only and never stand in for catalogue data.
-- WhatsApp invite links are shown only via `inviteLinks()` in `src/lib/registration.ts` (payment confirmed + subscription active/grace + access active) — a second guard behind the backend.
+- Frontend is hosted on Netlify; the authoritative application database and Auth are the owner's external Supabase project; WhatsApp connectivity is the Railway Baileys service.
+- Browser code may use only Supabase URL + anon/publishable key for Auth. All privileged reads/writes and WhatsApp bridge calls go through Netlify Functions; service-role and bridge tokens remain server-side.
+- Every privileged function validates the Supabase access token with Supabase Auth and checks `app_metadata.role === "super_admin"` plus the owner account before using the service-role key.
+- Money is integer Kwanza end-to-end; the active plan is free for the first 30 days, then 1,000 Kz per 30-day renewal with a 5-day grace period.
+- WhatsApp group imports are read from the connected Baileys account, persisted to `whatsapp_groups`, `members`, and `group_memberships`, and must be idempotent.
+- Never remove a WhatsApp participant until the subscription has passed its expiry and grace period; the connected account must be a group administrator. Log every operation.
+- Never invent contacts, payment confirmations, QR states, group records, or dashboard numbers. Display only data returned by Supabase/Railway.
+- The owner must explicitly approve production deployment/merge; work in the audit branch until reviewed.
