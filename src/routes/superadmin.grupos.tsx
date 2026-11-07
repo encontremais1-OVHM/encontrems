@@ -11,7 +11,7 @@ import { apiRequest, describeApiError } from "@/lib/api/client";
 import { formatPhone } from "@/lib/format";
 
 type GroupContact = {id:string;name:string;phone:string;email:string|null;status:string};
-type WhatsAppGroup = {id:string;name:string;description:string|null;external_group_id:string;sync_status:string;is_active:boolean;participants:GroupContact[];participants_count:number};
+type WhatsAppGroup = {id:string;name:string;description:string|null;external_group_id:string;group_type:"main"|"subgroup";sync_status:string;is_active:boolean;participants:GroupContact[];participants_count:number};
 
 export const Route = createFileRoute("/superadmin/grupos")({
   head: () => ({meta:[{title:"Grupos WhatsApp — Encontre +"},{name:"description",content:"Grupos reais importados do WhatsApp e respetivos contactos."}]}),
@@ -20,14 +20,30 @@ export const Route = createFileRoute("/superadmin/grupos")({
 
 function GruposPage() {
   const [expanded,setExpanded] = useState<string|null>(null);
+  const [savingGroup,setSavingGroup] = useState<string|null>(null);
+  const [actionError,setActionError] = useState<string|null>(null);
   const query = useQuery({
     queryKey:["whatsapp","groups"],
     queryFn:()=>apiRequest<{data:WhatsAppGroup[]}>("/admin/whatsapp/groups"),
     retry:false,
   });
+  async function changeGroupType(groupId:string,groupType:"main"|"subgroup") {
+    setSavingGroup(groupId);
+    setActionError(null);
+    try {
+      await apiRequest("/admin/whatsapp/groups/"+groupId+"/type",{method:"PATCH",body:{group_type:groupType}});
+      await query.refetch();
+    } catch (error) {
+      setActionError(describeApiError(error));
+    } finally {
+      setSavingGroup(null);
+    }
+  }
+
   return <div className="space-y-6">
     <PageHeader title="Grupos WhatsApp" description="Consulte os grupos importados da conta WhatsApp ligada e os contactos encontrados em cada grupo." />
     {query.isError && <ApiErrorNotice message={describeApiError(query.error)} onRetry={()=>query.refetch()} />}
+    {actionError && <ApiErrorNotice message={actionError} onRetry={()=>setActionError(null)} />}
     {query.data?.data?.length ? <div className="space-y-3">
       <p className="text-sm text-muted-foreground">{query.data.data.length} grupos · {query.data.data.reduce((n,g)=>n+g.participants_count,0)} participações sincronizadas</p>
       {query.data.data.map((group)=> <section key={group.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
@@ -41,6 +57,12 @@ function GruposPage() {
           {expanded===group.id?<ChevronUp className="size-4"/>:<ChevronDown className="size-4"/>}
         </button>
         {expanded===group.id && <div className="border-t p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <Badge variant={group.group_type==="main"?"success":"neutral"}>{group.group_type==="main"?"Comunidade principal":"Subgrupo de interesse"}</Badge>
+            <Button size="sm" variant="outline" disabled={savingGroup===group.id} onClick={()=>void changeGroupType(group.id,group.group_type==="main"?"subgroup":"main")}>
+              {savingGroup===group.id?"A guardar…":group.group_type==="main"?"Marcar como subgrupo":"Definir como comunidade principal"}
+            </Button>
+          </div>
           {group.participants.length ? <div className="space-y-2">
             {group.participants.map((person)=> <div key={person.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/40 px-3 py-2">
               <span className="flex size-8 items-center justify-center rounded-full bg-background"><Users className="size-4 text-muted-foreground"/></span>
