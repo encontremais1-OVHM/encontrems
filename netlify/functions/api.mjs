@@ -671,7 +671,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
     contactsImported += memberships.length;
   }
   await ensureConnection(communityId, "connected");
-  return { communities_imported: 1, groups_imported: groupsImported, subgroups_imported: source.subgroups?.length || 0, contacts_imported: contactsImported, participants_skipped: skipped };
+  return { communities_imported: 1, groups_imported: groupsImported, subgroups_imported: Math.max(0, groupsImported - 1), contacts_imported: contactsImported, participants_skipped: skipped };
 }
 
 export default async (request) => {
