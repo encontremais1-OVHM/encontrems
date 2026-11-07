@@ -161,6 +161,10 @@ export interface RegistrationReceipt {
   reference: string;
   status: RegistrationStatus;
   payment: RegistrationPayment;
+  access?: {
+    community_invite_url: string | null;
+    subgroup_invite_url: string | null;
+  };
 }
 
 export interface RegistrationAccess {
