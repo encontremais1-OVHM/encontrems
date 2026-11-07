@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
+import { Trash2 } from "lucide-react";
 import { ApiErrorNotice } from "@/components/app/ApiStatus";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -30,10 +31,14 @@ function ComunidadesPage() {
     mutationFn:({id,status}:{id:string;status:"active"|"inactive"})=>apiRequest("/admin/communities/"+id,{method:"PATCH",body:{status}}),
     onSuccess:async()=>{setNotice("Estado da comunidade atualizado.");await client.invalidateQueries({queryKey:["admin","resource","communities"]});await client.invalidateQueries({queryKey:["public","communities"]});}
   });
+  const remove=useMutation({
+    mutationFn:(id:string)=>apiRequest<{message:string}>("/admin/communities/"+id,{method:"DELETE"}),
+    onSuccess:async(result)=>{setNotice(result.message);await client.invalidateQueries({queryKey:["admin","resource","communities"]});await client.invalidateQueries({queryKey:["public","communities"]});await client.invalidateQueries({queryKey:["whatsapp","groups"]});}
+  });
   function submit(e:FormEvent){e.preventDefault();setNotice(null);create.mutate();}
   return <div className="space-y-6">
     <PageHeader title="Comunidades" description="Crie comunidades, configure o plano e decida quais ficam disponíveis no formulário público de inscrição."/>
-    {(query.isError||create.error||update.error)&&<ApiErrorNotice message={describeApiError(query.error||create.error||update.error)} onRetry={()=>query.refetch()}/>}
+    {(query.isError||create.error||update.error||remove.error)&&<ApiErrorNotice message={describeApiError(query.error||create.error||update.error||remove.error)} onRetry={()=>query.refetch()}/>}
     {notice&&<p className="rounded-lg border border-success/30 bg-success/5 px-4 py-3 text-sm text-success">{notice}</p>}
     <form onSubmit={submit} className="space-y-4 rounded-xl border bg-card p-5 shadow-card">
       <div><h2 className="font-bold text-foreground">Adicionar comunidade</h2><p className="mt-1 text-sm text-muted-foreground">A nova comunidade é criada como privada. Só aparece aos visitantes depois de associar uma Comunidade do WhatsApp, disponibilizar pelo menos um subgrupo e publicar a comunidade.</p></div>
@@ -58,7 +63,7 @@ function ComunidadesPage() {
             <div><p className="text-xs text-muted-foreground">Adesão</p><p className="font-semibold text-foreground">{formatKz(plan?.initial_price??0)}</p></div>
             <div><p className="text-xs text-muted-foreground">Renovação</p><p className="font-semibold text-foreground">{formatKz(plan?.renewal_price??0)} / {plan?.duration_days??"—"} dias</p></div>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"><p className="text-xs text-muted-foreground">{plan?"Tolerância: "+plan.grace_days+" dias":"Sem plano ativo"}. Para publicar, é obrigatório ter uma Comunidade WhatsApp e pelo menos um subgrupo ativo.</p><Button size="sm" variant={community.status==="active"?"outline":"default"} disabled={update.isPending} onClick={()=>update.mutate({id:community.id,status:community.status==="active"?"inactive":"active"})}>{community.status==="active"?"Ocultar inscrições":"Publicar inscrições"}</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"><p className="text-xs text-muted-foreground">{plan?"Tolerância: "+plan.grace_days+" dias":"Sem plano ativo"}. Para publicar, é obrigatório ter uma Comunidade WhatsApp e pelo menos um subgrupo ativo.</p><div className="flex flex-wrap gap-2"><Button size="sm" variant={community.status==="active"?"outline":"default"} disabled={update.isPending||remove.isPending} onClick={()=>update.mutate({id:community.id,status:community.status==="active"?"inactive":"active"})}>{community.status==="active"?"Ocultar inscrições":"Publicar inscrições"}</Button><Button size="sm" variant="destructive" disabled={remove.isPending||update.isPending} onClick={()=>{if(window.confirm("Remover a comunidade "+community.name+" da plataforma? Esta ação apaga a configuração e os grupos sincronizados sem histórico. Não apaga a Comunidade nem os grupos reais do WhatsApp. Comunidades com subscrições, participações ou operações de acesso não podem ser eliminadas."))remove.mutate(community.id);}}><Trash2 className="size-4"/>Remover comunidade</Button></div></div>
         </article>;
       }):<div className="rounded-xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">Ainda não existem comunidades.</div>}
     </section>
