@@ -1,15 +1,13 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LogIn, LogOut, Menu } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { LogOut, Menu } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { ApiStatusPill } from "@/components/app/ApiStatus";
 import { Logo } from "@/components/brand/Logo";
 import { ALL_NAV_ITEMS, NAV_GROUPS } from "@/components/layout/nav";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { logout } from "@/lib/api/endpoints";
-import { clearToken, getToken } from "@/lib/auth-storage";
+import { signOutSupabase } from "@/lib/supabase-auth";
 import { cn } from "@/lib/utils";
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
@@ -55,14 +53,8 @@ function SidebarFooter() {
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-
-  useEffect(() => {
-    setHasSession(Boolean(getToken()));
-  }, [pathname]);
 
   const current =
     ALL_NAV_ITEMS.filter((i) => pathname === i.to || pathname.startsWith(`${i.to}/`)).sort(
@@ -70,21 +62,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
     )[0] ?? ALL_NAV_ITEMS[0];
 
   async function handleLogout() {
-    try {
-      await logout();
-    } catch {
-      // Token is cleared locally regardless of the API response.
-    }
-    clearToken();
-    queryClient.removeQueries({ queryKey: ["auth"] });
-    queryClient.removeQueries({ queryKey: ["admin"] });
-    setHasSession(false);
-    navigate({ to: "/superadmin/entrar" });
+    await signOutSupabase();
+    navigate({ to: "/superadmin/entrar", replace: true });
   }
 
   return (
     <div className="min-h-screen bg-muted/40">
-      {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <div className="flex h-16 items-center border-b border-sidebar-border px-5">
           <Link to="/superadmin" aria-label="Encontre + — Dashboard">
@@ -96,7 +79,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="lg:pl-64">
-        {/* Top bar */}
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-background/90 px-4 backdrop-blur sm:px-6">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -122,19 +104,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex items-center gap-2">
             <ApiStatusPill />
-            {hasSession ? (
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut />
-                <span className="hidden sm:inline">Sair</span>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/superadmin/entrar">
-                  <LogIn />
-                  <span className="hidden sm:inline">Iniciar sessão</span>
-                </Link>
-              </Button>
-            )}
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
           </div>
         </header>
 
