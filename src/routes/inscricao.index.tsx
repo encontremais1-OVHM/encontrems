@@ -537,6 +537,31 @@ function Receipt({
         <p className="mt-1 font-mono text-2xl font-bold tracking-wide text-foreground">{receipt.reference}</p>
       </div>
 
+      {receipt.access && (
+        <section className="space-y-3 rounded-2xl border bg-card p-5">
+          <div>
+            <h2 className="font-bold text-foreground">Acesso aos grupos WhatsApp</h2>
+            <p className="mt-1 text-sm text-muted-foreground">A inscrição fica guardada na Encontre +. Cada entrada é confirmada separadamente.</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-3 text-sm">
+            <span className="font-medium text-foreground">{communityName} · Comunidade principal</span>
+            <span className={receipt.access.community === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{receipt.access.community === "joined" ? "Adicionado ao grupo" : "A aguardar acesso"}</span>
+          </div>
+          {receipt.access.community === "pending_invitation" && receipt.access.community_invite_url && (
+            <a className="inline-flex text-sm font-semibold text-primary underline underline-offset-4" href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Entrar na comunidade principal</a>
+          )}
+          {receipt.access.subgroups.map((group) => (
+            <div key={group.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm">
+              <span className="font-medium text-foreground">{group.name}</span>
+              <span className={group.status === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{group.status === "joined" ? "Adicionado" : "A aguardar acesso"}</span>
+              {group.status !== "joined" && group.invite_url && <a className="w-full font-semibold text-primary underline underline-offset-4" href={group.invite_url} target="_blank" rel="noopener noreferrer">Entrar neste subgrupo</a>}
+            </div>
+          ))}
+          {(receipt.access.community === "pending_invitation" || receipt.access.subgroups.some((group) => group.status !== "joined")) && (
+            <p className="text-xs text-muted-foreground">Guarde o número da inscrição. Se algum acesso continuar pendente, a equipa poderá verificar o estado no painel administrativo.</p>
+          )}
+        </section>
+      )}
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
       <p className="text-sm text-muted-foreground">
