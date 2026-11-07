@@ -137,8 +137,8 @@ function InscricaoPage() {
   const communities = useMemo(() => catalog.data?.data ?? [], [catalog.data]);
 
   const [step, setStep] = useState(0);
-  const [communityId, setCommunityId] = useState<number | null>(null);
-  const [subgroupId, setSubgroupId] = useState<number | null>(null);
+  const [communityId, setCommunityId] = useState<string | null>(null);
+  const [subgroupId, setSubgroupId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -537,7 +537,7 @@ function Receipt({
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
       <p className="text-sm text-muted-foreground">
-        Depois de o pagamento ser confirmado, recebe acesso à comunidade e ao subgrupo escolhido.
+        A adesão é gratuita durante 30 dias. Se o WhatsApp estiver ligado e a conta tiver permissões de administradora, a entrada no subgrupo será processada automaticamente; caso contrário, ficará pendente de autorização no painel.
       </p>
       <Button variant="outline" asChild>
         <Link to="/inscricao/estado" search={{ ref: receipt.reference }}>
