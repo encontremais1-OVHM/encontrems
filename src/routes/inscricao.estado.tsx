@@ -234,7 +234,7 @@ function WhatsAppAccess({ links }: { links: { community: string | null; subgroup
         <MessageCircle className="size-5 text-success" /> Acesso autorizado
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Abra o WhatsApp para concluir a entrada. Os links são pessoais — não os partilhe.
+        Abra o WhatsApp para concluir a entrada. Não partilhe os convites fora da comunidade.
       </p>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         {links.community && (
