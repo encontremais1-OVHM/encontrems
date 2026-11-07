@@ -88,6 +88,89 @@ async function publicInterests() {
   return {data:rows};
 }
 
+async function adminResource(resource) {
+  if (resource === "subscriptions") {
+    const [rows,members,communities,plans] = await Promise.all([
+      sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at,created_at&order=created_at.desc&limit=500"),
+      sb("members?select=id,full_name,phone_e164,phone"),
+      sb("communities?select=id,name"),
+      sb("plans?select=id,name"),
+    ]);
+    return {data:rows.map((s)=>({
+      ...s,member_name:members.find((m)=>m.id===s.member_id)?.full_name || "—",
+      phone:members.find((m)=>m.id===s.member_id)?.phone_e164 || members.find((m)=>m.id===s.member_id)?.phone || "—",
+      community_name:communities.find((c)=>c.id===s.community_id)?.name || "—",
+      plan_name:plans.find((p)=>p.id===s.plan_id)?.name || "—",
+    }))};
+  }
+  if (resource === "audit") {
+    const [rows,members] = await Promise.all([
+      sb("audit_logs?select=id,action,entity_type,entity_id,member_id,old_values,new_values,created_at&order=created_at.desc&limit=500"),
+      sb("members?select=id,full_name,phone_e164,phone"),
+    ]);
+    return {data:rows.map((a)=>({...a,member_name:members.find((m)=>m.id===a.member_id)?.full_name || "—"}))};
+  }
+  if (resource === "communities") {
+    const [rows,plans,groups,subscriptions] = await Promise.all([
+      sb("communities?select=id,name,slug,description,influencer_name,status,created_at&order=name.asc"),
+      sb("plans?select=id,community_id,name,initial_price,renewal_price,duration_days,grace_days,is_active"),
+      sb("whatsapp_groups?select=id,community_id,is_active"),
+      sb("subscriptions?select=id,community_id,member_id"),
+    ]);
+    return {data:rows.map((community)=>({
+      ...community,
+      plans:plans.filter((p)=>p.community_id===community.id),
+      groups_count:groups.filter((g)=>g.community_id===community.id && g.is_active).length,
+      members_count:new Set(subscriptions.filter((s)=>s.community_id===community.id).map((s)=>s.member_id)).size,
+    }))};
+  }
+  if (resource === "access") {
+    const [rows,members,groups] = await Promise.all([
+      sb("access_operations?select=id,member_id,whatsapp_group_id,operation_type,status,attempts,last_error,created_at,executed_at,next_retry_at&order=created_at.desc&limit=500"),
+      sb("members?select=id,full_name,phone_e164,phone"),
+      sb("whatsapp_groups?select=id,name"),
+    ]);
+    return {data:rows.map((op)=>({
+      ...op,member_name:members.find((m)=>m.id===op.member_id)?.full_name || "—",
+      phone:members.find((m)=>m.id===op.member_id)?.phone_e164 || members.find((m)=>m.id===op.member_id)?.phone || "—",
+      group_name:groups.find((g)=>g.id===op.whatsapp_group_id)?.name || "—",
+    }))};
+  }
+  if (resource === "registrations") {
+    const [members,subscriptions] = await Promise.all([
+      sb("members?select=id,full_name,phone_e164,phone,email,city,province,status,registration_source,created_at&order=created_at.desc&limit=500"),
+      sb("subscriptions?select=member_id,status,expires_at,grace_ends_at&order=created_at.desc"),
+    ]);
+    return {data:members.map((m)=>{
+      const sub=subscriptions.find((s)=>s.member_id===m.id);
+      return {...m,subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
+    })};
+  }
+  if (resource === "notifications") {
+    const [rows,members] = await Promise.all([
+      sb("notifications?select=id,member_id,notification_type,channel,message,status,sent_at,error_message,created_at&order=created_at.desc&limit=500"),
+      sb("members?select=id,full_name,phone_e164,phone"),
+    ]);
+    return {data:rows.map((n)=>({...n,member_name:members.find((m)=>m.id===n.member_id)?.full_name || "Geral"}))};
+  }
+  if (resource === "plans") {
+    const [rows,communities] = await Promise.all([
+      sb("plans?select=id,community_id,name,description,initial_price,renewal_price,currency,duration_days,grace_days,is_active,created_at&order=created_at.desc"),
+      sb("communities?select=id,name"),
+    ]);
+    return {data:rows.map((p)=>({...p,community_name:communities.find((c)=>c.id===p.community_id)?.name || "—"}))};
+  }
+  if (resource === "users") {
+    const rows=await sb("users?select=id,name,email,role,is_active,last_login_at,created_at&order=created_at.desc");
+    return {data:rows};
+  }
+  if (resource === "reports") {
+    const summary=await adminDashboard();
+    return {data:Object.entries(summary.totals).map(([metric,value])=>({id:metric,metric,value}))};
+  }
+  return {data:[]};
+}
+
 async function adminDashboard() {
   const [members, subscriptions, payments, connections, operations] = await Promise.all([
     sb("members?select=id,status,created_at"),
@@ -325,6 +408,8 @@ export default async (request) => {
     if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
 
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
+    const resourceMatch = path.match(/^\/admin\/resources\/(subscriptions|audit|communities|access|registrations|notifications|plans|users|reports)$/);
+    if (resourceMatch && method === "GET") return json(200,await adminResource(resourceMatch[1]));
     if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(q));
     if (path === "/admin/payments" && method === "GET") return json(200,await adminPayments());
     const paymentAction = path.match(/^\/admin\/payments\/([0-9a-f-]{36})\/(confirm|reject)$/i);
