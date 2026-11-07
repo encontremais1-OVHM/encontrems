@@ -393,9 +393,9 @@ export default async (request) => {
         headers:{Prefer:"resolution=merge-duplicates,return=representation"},
       });
       const member = memberRows[0];
-      const previousSubs = await sb("subscriptions?select=id,status,expires_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&order=created_at.desc&limit=1");
+      const previousSubs = await sb("subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&order=created_at.desc&limit=1");
       let subscriptionId = previousSubs[0]?.id;
-      if (previousSubs[0] && ["expired","cancelled","suspended"].includes(previousSubs[0].status)) {
+      if (previousSubs[0] && (["expired","cancelled","suspended","grace_period"].includes(previousSubs[0].status) || (previousSubs[0].expires_at && new Date(previousSubs[0].expires_at).getTime() <= now.getTime()))) {
         if (Number(plan.renewal_price) !== 1000) return json(409,{message:"O plano de renovação não está configurado para 1.000 Kz."});
         const renewals = await sb("payments?select=id,status,payment_reference,amount&subscription_id=eq."+subscriptionId+"&payment_type=eq.renewal&order=created_at.desc&limit=50");
         const pendingRenewal = renewals.find((p)=>["initiated","pending","under_review"].includes(p.status));
