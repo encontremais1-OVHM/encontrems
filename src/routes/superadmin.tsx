@@ -1,14 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AdminShell } from "@/components/layout/AdminShell";
 import { Button } from "@/components/ui/button";
-import { ApiError, describeApiError } from "@/lib/api/client";
-import { meQuery } from "@/lib/api/endpoints";
-import { clearToken, getToken } from "@/lib/auth-storage";
-import { isApiConfigured } from "@/lib/config";
+import {
+  getAuthenticatedUser,
+  isEncontreSuperAdmin,
+  signOutSupabase,
+} from "@/lib/supabase-auth";
 
 export const Route = createFileRoute("/superadmin")({
   head: () => ({
@@ -26,44 +26,44 @@ function FullScreen({ children }: { children: ReactNode }) {
 }
 
 /**
- * Client gate for the panel. The real protection is the Laravel API: every
- * /admin/* endpoint requires a Sanctum token with the super_admin role and
- * answers 401/403 otherwise. This gate only avoids rendering the panel to
- * visitors without a valid Super Admin session.
+ * This browser-side gate improves navigation UX. The authoritative role is
+ * stored in Supabase app_metadata and must also be checked by server-side
+ * functions/RLS before any privileged data operation is enabled.
  */
 function SuperAdminLayout() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const configured = isApiConfigured();
-  const [token, setTokenState] = useState<string | null | undefined>(undefined);
+  const [status, setStatus] = useState<"checking" | "allowed" | "denied">("checking");
 
   useEffect(() => {
-    setTokenState(getToken());
-  }, []);
+    let active = true;
 
-  const me = useQuery({ ...meQuery(), enabled: configured && Boolean(token) });
+    async function verifyAccess() {
+      const user = await getAuthenticatedUser();
+      const allowed = isEncontreSuperAdmin(user);
+      if (!active) return;
 
-  useEffect(() => {
-    if (token === null || (token !== undefined && !configured)) {
+      if (allowed) {
+        setStatus("allowed");
+        return;
+      }
+
+      setStatus("denied");
+      await signOutSupabase();
       navigate({ to: "/superadmin/entrar", replace: true });
     }
-  }, [token, configured, navigate]);
 
-  useEffect(() => {
-    if (me.error instanceof ApiError && me.error.status === 401) {
-      clearToken();
-      queryClient.removeQueries({ queryKey: ["auth"] });
-      navigate({ to: "/superadmin/entrar", replace: true });
-    }
-  }, [me.error, navigate, queryClient]);
+    void verifyAccess();
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
 
-  function signOut() {
-    clearToken();
-    queryClient.removeQueries({ queryKey: ["auth"] });
+  async function signOut() {
+    await signOutSupabase();
     navigate({ to: "/superadmin/entrar", replace: true });
   }
 
-  if (token === undefined || token === null || !configured || me.isPending) {
+  if (status === "checking") {
     return (
       <FullScreen>
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="A verificar sessão" />
@@ -71,26 +71,7 @@ function SuperAdminLayout() {
     );
   }
 
-  if (me.isError) {
-    return (
-      <FullScreen>
-        <div className="max-w-sm text-center">
-          <p className="font-semibold text-foreground">Não foi possível verificar a sessão</p>
-          <p className="mt-1 text-sm text-muted-foreground">{describeApiError(me.error)}</p>
-          <div className="mt-5 flex justify-center gap-2">
-            <Button variant="outline" onClick={() => me.refetch()}>
-              Tentar novamente
-            </Button>
-            <Button variant="ghost" onClick={signOut}>
-              Sair
-            </Button>
-          </div>
-        </div>
-      </FullScreen>
-    );
-  }
-
-  if (me.data.user.role !== "super_admin") {
+  if (status === "denied") {
     return (
       <FullScreen>
         <div className="max-w-sm text-center">
@@ -99,10 +80,10 @@ function SuperAdminLayout() {
           </span>
           <p className="mt-4 font-semibold text-foreground">Acesso reservado ao Super Admin</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            A sua conta não tem permissão para aceder a este painel.
+            A sessão não pertence à conta proprietária autorizada.
           </p>
-          <Button className="mt-5" variant="outline" onClick={signOut}>
-            Terminar sessão
+          <Button className="mt-5" variant="outline" onClick={() => navigate({ to: "/superadmin/entrar" })}>
+            Ir para o acesso
           </Button>
         </div>
       </FullScreen>
