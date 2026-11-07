@@ -537,8 +537,22 @@ function Receipt({
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
       <p className="text-sm text-muted-foreground">
-        A adesão é gratuita durante 30 dias. Se o WhatsApp estiver ligado e a conta tiver permissões de administradora, a entrada no subgrupo será processada automaticamente; caso contrário, ficará pendente de autorização no painel.
+        A adesão é gratuita durante 30 dias. Se a conta WhatsApp da comunidade estiver ligada e tiver permissões de administradora, a entrada será processada automaticamente. Caso contrário, pode usar os convites abaixo quando estiverem disponíveis.
       </p>
+      {(receipt.access?.community_invite_url || receipt.access?.subgroup_invite_url) && (
+        <div className="flex flex-col gap-3 sm:flex-row">
+          {receipt.access?.community_invite_url && (
+            <Button asChild>
+              <a href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Entrar na comunidade WhatsApp</a>
+            </Button>
+          )}
+          {receipt.access?.subgroup_invite_url && (
+            <Button asChild variant="outline">
+              <a href={receipt.access.subgroup_invite_url} target="_blank" rel="noopener noreferrer">Entrar no subgrupo</a>
+            </Button>
+          )}
+        </div>
+      )}
       <Button variant="outline" asChild>
         <Link to="/inscricao/estado" search={{ ref: receipt.reference }}>
           Consultar estado da inscrição <ArrowRight />
