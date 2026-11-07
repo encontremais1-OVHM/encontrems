@@ -165,6 +165,8 @@ export interface RegistrationReceipt {
   status: RegistrationStatus;
   payment: RegistrationPayment;
   access?: {
+    community: "joined" | "pending_invitation";
+    subgroups: Array<{id:string;name:string;kind:"subgroup";status:"joined"|"pending_invitation";invite_url:string|null}>;
     community_invite_url: string | null;
     subgroup_invite_url: string | null;
     subgroup_invite_urls?: Array<{id:string;name:string;url:string}>;
