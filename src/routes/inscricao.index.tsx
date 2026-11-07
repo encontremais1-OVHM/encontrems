@@ -189,14 +189,15 @@ function InscricaoPage() {
   }
 
   async function submit() {
-    if (!community || selectedSubgroups.length === 0 || !normalizedPhone) return;
+    const firstSubgroup = selectedSubgroups[0];
+    if (!community || !firstSubgroup || !normalizedPhone) return;
     setSubmitError(null);
     setSubmitting(true);
     try {
       const res = await createRegistration({
         community_id: community.id,
         subgroup_ids: selectedSubgroups.map((s) => s.id),
-        subgroup_id: selectedSubgroups[0].id,
+        subgroup_id: firstSubgroup.id,
         full_name: form.full_name.trim(),
         whatsapp: normalizedPhone,
         email: form.email.trim() === "" ? null : form.email.trim(),
