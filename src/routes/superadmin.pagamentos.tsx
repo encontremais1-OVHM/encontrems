@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiRequest, describeApiError } from "@/lib/api/client";
-import { formatKz, formatDateTime, formatPhone } from "@/lib/format";
+import { formatKz, formatDate, formatPhone } from "@/lib/format";
 
 type PaymentRow = {
   id:string; amount:number; currency:string; status:string; payment_reference:string;
@@ -68,8 +68,8 @@ function PagamentosPage(){
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>{payment.payment_type==="renewal"?"Renovação":"Pagamento"}</span>
             <span>{payment.provider==="manual"?"Verificação manual":payment.provider}</span>
-            <span>{formatDateTime(payment.created_at)}</span>
-            {payment.paid_at&&<span>Pago em {formatDateTime(payment.paid_at)}</span>}
+            <span>{formatDate(payment.created_at,true)}</span>
+            {payment.paid_at&&<span>Pago em {formatDate(payment.paid_at,true)}</span>}
           </div>
           {payment.rejection_reason&&<p className="mt-2 text-sm text-destructive">Motivo: {payment.rejection_reason}</p>}
           {["pending","initiated","under_review"].includes(payment.status)&&<div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
