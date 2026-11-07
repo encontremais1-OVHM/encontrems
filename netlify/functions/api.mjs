@@ -83,6 +83,11 @@ async function publicPlan() {
   return { initial_price_kz: Number(p.initial_price), renewal_price_kz: Number(p.renewal_price), duration_days: p.duration_days, warning_day: 27, grace_days: p.grace_days };
 }
 
+async function publicInterests() {
+  const rows = await sb("interests?select=id,name,slug&is_active=eq.true&order=name.asc");
+  return {data:rows};
+}
+
 async function adminDashboard() {
   const [members, subscriptions, payments, connections, operations] = await Promise.all([
     sb("members?select=id,status,created_at"),
@@ -312,6 +317,7 @@ export default async (request) => {
     if (path === "/health") { await sb("plans?select=id&limit=1"); return json(200,{status:"ok",supabase:"connected",time:iso(new Date())}); }
     if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
     if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
+    if (path === "/public/interests" && method === "GET") return json(200,await publicInterests());
 
     const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET") || (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST");
     const user = await requireSuperAdmin(request);
@@ -403,6 +409,17 @@ export default async (request) => {
         headers:{Prefer:"resolution=merge-duplicates,return=representation"},
       });
       const member = memberRows[0];
+      const interestSlugs = Array.isArray(body.interests) ? [...new Set(body.interests.map((v)=>String(v).trim()).filter(Boolean))] : [];
+      if (interestSlugs.length) {
+        const foundInterests = await sb("interests?select=id,slug&is_active=eq.true&slug=in.("+interestSlugs.map(encodeURIComponent).join(",")+")");
+        if (foundInterests.length) {
+          await sb("member_interests?on_conflict=member_id,interest_id",{
+            method:"POST",
+            body:JSON.stringify(foundInterests.map((interest)=>({member_id:member.id,interest_id:interest.id}))),
+            headers:{Prefer:"resolution=ignore-duplicates,return=minimal"},
+          });
+        }
+      }
       const previousSubs = await sb("subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&order=created_at.desc&limit=1");
       let subscriptionId = previousSubs[0]?.id;
       if (previousSubs[0] && (["expired","cancelled","suspended","grace_period"].includes(previousSubs[0].status) || (previousSubs[0].expires_at && new Date(previousSubs[0].expires_at).getTime() <= now.getTime()))) {
