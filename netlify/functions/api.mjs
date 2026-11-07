@@ -92,7 +92,7 @@ async function adminDashboard() {
   const [members, subscriptions, payments, connections, operations] = await Promise.all([
     sb("members?select=id,status,created_at"),
     sb("subscriptions?select=id,member_id,status,expires_at,grace_ends_at,created_at"),
-    sb("payments?select=id,amount,status,paid_at,created_at"),
+    sb("payments?select=id,amount,status,paid_at,created_at,payment_type"),
     sb("whatsapp_connections?select=id,connection_status,last_connected_at,last_disconnected_at,last_error&order=updated_at.desc&limit=1"),
     sb("access_operations?select=id,status,operation_type&operation_type=eq.remove&status=in.(queued,processing,retry_pending)"),
   ]);
@@ -131,7 +131,7 @@ async function adminDashboard() {
       member_growth: seriesByMonth(members,"created_at"),
       revenue_kz: seriesByMonth(paid,"paid_at").map((x) => ({...x,value: paid.filter((p) => String(p.paid_at || "").slice(0,7) === x.period).reduce((s,p) => s + Number(p.amount || 0),0)})),
       payments: seriesByMonth(paid,"paid_at"),
-      renewals: seriesByMonth(subscriptions,"created_at",(s) => s.status === "active"),
+      renewals: seriesByMonth(paid.filter((p) => p.payment_type === "renewal"),"paid_at"),
       expirations: seriesByMonth(subscriptions,"expires_at",(s) => s.status === "expired"),
     },
   };
