@@ -648,18 +648,8 @@ export default async (request) => {
     if (path.startsWith("/admin/whatsapp/groups/") && path.endsWith("/type") && method === "PATCH") {
       const groupId = path.slice("/admin/whatsapp/groups/".length, -"/type".length);
       const body = await request.json().catch(() => ({}));
-      if (!isUuid(groupId) || !["main","subgroup"].includes(body.group_type)) return json(422,{message:"Tipo de grupo inválido."});
-      const selected = await sb("whatsapp_groups?select=id,community_id&id=eq."+groupId+"&limit=1");
-      if (!selected.length) return json(404,{message:"Grupo não encontrado."});
-      if (body.group_type === "main") {
-        await sb("whatsapp_groups?community_id=eq."+selected[0].community_id+"&group_type=eq.main",{
-          method:"PATCH",body:JSON.stringify({group_type:"subgroup"}),headers:{Prefer:"return=minimal"},
-        });
-      }
-      await sb("whatsapp_groups?id=eq."+groupId,{
-        method:"PATCH",body:JSON.stringify({group_type:body.group_type}),headers:{Prefer:"return=minimal"},
-      });
-      return json(200,{message:"Tipo do grupo atualizado.",group_id:groupId,group_type:body.group_type});
+      const result = await adminUpdateGroup(groupId, { group_type: body.group_type }, user);
+      return json(result.status, result.body);
     }
     if (path === "/admin/whatsapp/connect" && method === "POST") return json(202,await bridge("/connect","POST",{}));
     if (path === "/admin/whatsapp/qr" && method === "GET") return json(200,await bridge("/qr"));
@@ -845,8 +835,8 @@ export default async (request) => {
         .filter((m)=>groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="subgroup"))
         .map((m)=>groups.find((g)=>g.id===m.whatsapp_group_id))
         .filter(Boolean);
-      const mainGroup = groups.find((g)=>g.group_type==="main") || null;
-      const communityJoined = memberships.some((m)=>m.status==="joined" && groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="main"));
+      const mainGroup = groups.find((g)=>g.group_type==="community") || null;
+      const communityJoined = memberships.some((m)=>m.status==="joined" && groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="community"));
       const communityInvite = mainGroup?.invite_link || null;
       const subgroupInviteUrls = selectedSubgroups.filter((g)=>g.invite_link).map((g)=>({id:g.id,name:g.name,url:g.invite_link}));
       const subgroupAccessReady = selectedSubgroups.length > 0 && selectedSubgroups.every((g)=>memberships.some((m)=>m.whatsapp_group_id===g.id && m.status==="joined") || Boolean(g.invite_link));
