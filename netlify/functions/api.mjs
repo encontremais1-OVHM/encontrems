@@ -448,12 +448,16 @@ async function confirmRenewalPayment(paymentId) {
 
 
 async function ensureConnection(communityId, status) {
-  const rows = await sb("whatsapp_connections?select=id&community_id=eq." + communityId + "&name=eq.Encontre%20%2B%20Principal&limit=1");
+  // One connected WhatsApp account is shared across the platform's communities.
+  const rows = await sb("whatsapp_connections?select=id,community_id&name=eq.Encontre%20%2B%20Principal&order=created_at.asc&limit=1");
+  const now = iso(new Date());
   if (rows[0]) {
-    await sb("whatsapp_connections?id=eq." + rows[0].id, { method:"PATCH", body: JSON.stringify({connection_status:status,updated_at:iso(new Date())}), headers: { Prefer:"return=minimal" } });
+    const patch = { connection_status: status, updated_at: now };
+    if (status === "connected") patch.last_connected_at = now;
+    if (status === "disconnected") patch.last_disconnected_at = now;
+    await sb("whatsapp_connections?id=eq." + rows[0].id, { method:"PATCH", body: JSON.stringify(patch), headers: { Prefer:"return=minimal" } });
     return rows[0].id;
   }
-  const now = iso(new Date());
   const created = await sb("whatsapp_connections", { method:"POST", body:JSON.stringify({community_id:communityId,name:"Encontre + Principal",provider:"baileys",connection_status:status,last_connected_at:status==="connected"?now:null,last_disconnected_at:status==="disconnected"?now:null}), headers:{Prefer:"return=representation"} });
   return created[0].id;
 }
@@ -466,7 +470,8 @@ async function syncWhatsApp(communityId) {
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({length:Math.ceil(items.length/size)},(_,i)=>items.slice(i*size,(i+1)*size));
   for (const group of groupsResult.groups || []) {
-    const existingGroups = await sb("whatsapp_groups?select=id,group_type&whatsapp_connection_id=eq."+encodeURIComponent(connectionId)+"&external_group_id=eq."+encodeURIComponent(group.id)+"&limit=1");
+    const existingGroups = await sb("whatsapp_groups?select=id,community_id,group_type&whatsapp_connection_id=eq."+encodeURIComponent(connectionId)+"&external_group_id=eq."+encodeURIComponent(group.id)+"&limit=1");
+    const groupCommunityId = existingGroups[0]?.community_id || communityId;
     const groupType = existingGroups[0]?.group_type || (String(group.subject || "").trim().toLowerCase() === communityName ? "main" : "subgroup");
     let inviteLink = null;
     try {
@@ -476,7 +481,7 @@ async function syncWhatsApp(communityId) {
     }
     const stored = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
       method:"POST",
-      body:JSON.stringify([{community_id:communityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:groupType,invite_link:inviteLink,is_active:true,sync_status:"synced"}]),
+      body:JSON.stringify([{community_id:groupCommunityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:groupType,invite_link:inviteLink,is_active:existingGroups[0] ? undefined : false,sync_status:"synced"}]),
       headers:{Prefer:"resolution=merge-duplicates,return=representation"},
     });
     const dbGroup = stored[0];
