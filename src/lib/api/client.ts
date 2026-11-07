@@ -47,7 +47,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (options.auth !== false && token) {
     try {
       const session = JSON.parse(token) as { access_token?: string };
-      if (session.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+      if (session.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
     } catch {
       // Auth guard will redirect if the stored session is malformed.
     }

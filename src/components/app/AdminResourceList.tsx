@@ -47,7 +47,7 @@ export function AdminResourceList({resource,title,description,columns}:{resource
               <tr>{columns.map((column)=><th key={column.key} className="px-4 py-3 font-semibold">{column.label}</th>)}</tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map((row,index)=><tr key={String(row.id||index)} className="align-top hover:bg-muted/30">
+              {rows.map((row,index)=><tr key={String(row["id"]||index)} className="align-top hover:bg-muted/30">
                 {columns.map((column)=><td key={column.key} className="max-w-[360px] px-4 py-3 text-foreground">
                   {column.key==="status" ? <Badge variant={row[column.key]==="active"||row[column.key]==="paid"||row[column.key]==="succeeded"||row[column.key]==="joined"?"success":row[column.key]==="expired"||row[column.key]==="failed"||row[column.key]==="rejected"?"danger":"neutral"}>{displayValue(column.key,row[column.key])}</Badge> : <span className="break-words">{displayValue(column.key,row[column.key])}</span>}
                 </td>)}

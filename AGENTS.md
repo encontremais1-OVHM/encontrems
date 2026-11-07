@@ -39,3 +39,4 @@ use the editor.
 - Never remove a WhatsApp participant until the subscription has passed its expiry and grace period; the connected account must be a group administrator. Log every operation.
 - Never invent contacts, payment confirmations, QR states, group records, or dashboard numbers. Display only data returned by Supabase/Railway.
 - The owner must explicitly approve production deployment/merge; work in the audit branch until reviewed.
+- App images (logo, section photos) live in `public/` or are bundled imports; never reference Lovable-only `/__l5e/` asset URLs because they 404 on Netlify.
