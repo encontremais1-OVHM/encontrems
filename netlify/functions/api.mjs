@@ -224,7 +224,7 @@ async function adminCreateCommunity(body, user) {
       headers: { Prefer: "return=representation" },
     });
     await writeAudit(user, "community.created", "community", community.id, null, { name, slug, status: "inactive", plan_id: plans?.[0]?.id || null });
-    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe o grupo principal e os subgrupos antes de a publicar." } };
+    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe a Comunidade do WhatsApp e os subgrupos antes de a publicar." } };
   } catch (error) {
     await sb("communities?id=eq." + community.id, { method: "PATCH", body: JSON.stringify({ status: "inactive" }), headers: { Prefer: "return=minimal" } });
     throw error;
@@ -284,6 +284,12 @@ async function adminUpdateGroup(groupId, body, user) {
   }
   const patch = { community_id: communityId, group_type: groupType, is_active: isActive, updated_at: iso(new Date()) };
   await sb("whatsapp_groups?id=eq." + groupId, { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } });
+  if (current.group_type === "community" && (groupType !== "community" || current.community_id !== communityId)) {
+    await sb("communities?id=eq." + current.community_id, {
+      method: "PATCH", body: JSON.stringify({ whatsapp_community_id: null, image_url: null, updated_at: iso(new Date()) }),
+      headers: { Prefer: "return=minimal" },
+    });
+  }
   if (groupType === "community") await sb("communities?id=eq." + communityId, {
     method: "PATCH", body: JSON.stringify({ whatsapp_community_id: current.external_group_id, updated_at: iso(new Date()) }),
     headers: { Prefer: "return=minimal" },
