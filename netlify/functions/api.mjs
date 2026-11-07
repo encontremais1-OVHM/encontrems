@@ -661,7 +661,7 @@ export default async (request) => {
         sb("whatsapp_groups?select=id,name,external_group_id,invite_link,group_type,is_active&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.main"),
         sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
       ]);
-      if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis."});
+      if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id || !g.external_group_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis. Todos os grupos escolhidos precisam estar sincronizados."});
       if (mainGroups.length !== 1 || !mainGroups[0].external_group_id) return json(409,{message:"Esta comunidade ainda não tem um único grupo principal ativo e sincronizado. Contacte a equipa Encontre +."});
       const now = new Date();
       const plan = plans[0];
@@ -721,13 +721,33 @@ export default async (request) => {
           membership = inserted[0];
         }
         let accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
-        if (accessStatus !== "joined" && waConnected && target.group.external_group_id) {
-          try {
-            await bridge("/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
-            accessStatus = "joined";
-            await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
-          } catch {
-            await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+        if (accessStatus !== "joined") {
+          const idempotencyKey = "registration-add:" + subscriptionId + ":" + target.group.id;
+          const existingOps = await sb("access_operations?select=id,status,attempts&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
+          let operation = existingOps[0];
+          if (!operation) {
+            const createdOps = await sb("access_operations", {
+              method: "POST",
+              body: JSON.stringify([{ member_id: member.id, whatsapp_group_id: target.group.id, operation_type: "add", status: "queued", idempotency_key: idempotencyKey, attempts: 0 }]),
+              headers: { Prefer: "return=representation" },
+            });
+            operation = createdOps[0];
+          }
+          if (waConnected && target.group.external_group_id && operation) {
+            const attempt = Number(operation.attempts || 0) + 1;
+            await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "processing", attempts: attempt, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+            try {
+              await bridge("/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
+              accessStatus = "joined";
+              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+              await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "succeeded", executed_at: iso(new Date()), last_error: null, next_retry_at: null, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+            } catch (error) {
+              const message = error instanceof Error ? error.message.slice(0, 300) : "Não foi possível adicionar o participante ao grupo.";
+              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+              await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "retry_pending", last_error: message, next_retry_at: iso(new Date(Date.now() + 15 * 60 * 1000)), updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+            }
+          } else if (operation) {
+            await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "retry_pending", last_error: "WhatsApp indisponível ou grupo sem identificador externo.", next_retry_at: iso(new Date(Date.now() + 15 * 60 * 1000)), updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
           }
         }
         accessResults.push({id:target.group.id,name:target.group.name,kind:target.kind,status:accessStatus,invite_url:target.group.invite_link || null});
