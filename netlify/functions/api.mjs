@@ -91,12 +91,13 @@ async function publicPlan() {
 }
 
 async function adminDashboard() {
-  const [members, subscriptions, payments, groups, connections] = await Promise.all([
+  const [members, subscriptions, payments, groups, connections, operations] = await Promise.all([
     sb("members?select=id,status,created_at"),
     sb("subscriptions?select=id,member_id,status,expires_at,grace_ends_at,created_at"),
     sb("payments?select=id,amount,status,paid_at,created_at"),
     sb("whatsapp_groups?select=id,is_active"),
     sb("whatsapp_connections?select=id,connection_status,last_connected_at,last_disconnected_at,last_error&order=updated_at.desc&limit=1"),
+    sb("access_operations?select=id,status,operation_type&operation_type=eq.remove&status=in.(queued,processing,retry_pending)"),
   ]);
   const now = Date.now();
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
@@ -109,7 +110,8 @@ async function adminDashboard() {
   const revenue = paid.reduce((sum,p) => sum + Number(p.amount || 0), 0);
   const revenueMonth = paid.filter((p) => p.paid_at && new Date(p.paid_at) >= monthStart).reduce((sum,p) => sum + Number(p.amount || 0), 0);
   const connection = connections[0];
-  const waStatus = connection?.connection_status || "disconnected";
+  let waStatus = connection?.connection_status || "disconnected";
+  try { const live = await bridge("/status"); waStatus = live.state || waStatus; } catch { /* keep last persisted state */ }
   const last30 = new Date(now - 30 * 86400000);
   const seriesByMonth = (rows, field, filter = () => true) => {
     const map = new Map();
@@ -125,9 +127,9 @@ async function adminDashboard() {
       new_signups: members.filter((m) => new Date(m.created_at) >= last30).length,
       payments_confirmed: paid.length, payments_pending: pending.length,
       revenue_total_kz: revenue, revenue_month_kz: revenueMonth, due_soon: dueSoon,
-      removals_pending: 0,
+      removals_pending: operations.length,
     },
-    whatsapp: { status: waStatus === "connecting" ? "disconnected" : waStatus === "connected" ? "connected" : "disconnected", adapter: "bider", last_seen_at: connection?.last_connected_at || null },
+    whatsapp: { status: waStatus === "connected" ? "connected" : waStatus === "error" ? "error" : "disconnected", adapter: "bider", last_seen_at: connection?.last_connected_at || null },
     series: {
       member_growth: seriesByMonth(members,"created_at"),
       revenue_kz: seriesByMonth(paid,"paid_at").map((x) => ({...x,value: paid.filter((p) => String(p.paid_at || "").slice(0,7) === x.period).reduce((s,p) => s + Number(p.amount || 0),0)})),
