@@ -318,6 +318,22 @@ export default async (request) => {
 
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
     if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(q));
+    if (path === "/admin/payments" && method === "GET") return json(200,await adminPayments());
+    const paymentAction = path.match(/^\/admin\/payments\/([0-9a-f-]{36})\/(confirm|reject)$/i);
+    if (paymentAction && method === "POST") {
+      if (paymentAction[2] === "confirm") {
+        const result = await confirmRenewalPayment(paymentAction[1],user);
+        return json(result.status,result.body);
+      }
+      const body = await request.json().catch(() => ({}));
+      const reason = String(body.reason || "Pagamento não confirmado.").slice(0,500);
+      await sb("payments?id=eq."+paymentAction[1],{
+        method:"PATCH",
+        body:JSON.stringify({status:"rejected",rejection_reason:reason,verified_at:iso(new Date()),updated_at:iso(new Date())}),
+        headers:{Prefer:"return=minimal"},
+      });
+      return json(200,{message:"Pagamento rejeitado."});
+    }
     if (path === "/admin/whatsapp/status" && method === "GET") {
       const status = await bridge("/status");
       return json(200,status);
