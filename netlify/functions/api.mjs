@@ -146,7 +146,7 @@ async function adminResource(resource) {
     ]);
     return {data:members.map((m)=>{
       const sub=subscriptions.find((s)=>s.member_id===m.id);
-      const selected = memberships.filter((membership)=>membership.member_id===m.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup"));
+      const selected = memberships.filter((membership)=>membership.member_id===m.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup" && group.community_id===sub?.community_id));
       const main = memberships.find((membership)=>membership.member_id===m.id && membership.status==="joined" && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="main"));
       return {...m,community_name:communities.find((community)=>community.id===sub?.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>({name:groups.find((g)=>g.id===membership.whatsapp_group_id)?.name || "Grupo",status:membership.status})),community_access:main?"joined":"pending",subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
     })};
@@ -181,10 +181,10 @@ function makeSlug(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
 }
 
-async function writeAudit(user, action, entityType, entityId, oldValues, newValues) {
+async function writeAudit(user, action, entityType, entityId, oldValues, newValues, memberId = null) {
   await sb("audit_logs", {
     method: "POST",
-    body: JSON.stringify([{ user_id: user?.id || null, action, entity_type: entityType, entity_id: entityId, old_values: oldValues || null, new_values: newValues || null }]),
+    body: JSON.stringify([{ user_id: user?.id || null, member_id: memberId, action, entity_type: entityType, entity_id: entityId, old_values: oldValues || null, new_values: newValues || null }]),
     headers: { Prefer: "return=minimal" },
   });
 }
@@ -278,9 +278,17 @@ async function adminUpdateGroup(groupId, body, user) {
   }
   const patch = { community_id: communityId, group_type: groupType, is_active: isActive, updated_at: iso(new Date()) };
   await sb("whatsapp_groups?id=eq." + groupId, { method: "PATCH", body: JSON.stringify(patch), headers: { Prefer: "return=minimal" } });
-  if (current.group_type === "main" && (groupType !== "main" || !isActive)) {
-    const remaining = await sb("whatsapp_groups?select=id&community_id=eq." + current.community_id + "&group_type=eq.main&is_active=eq.true");
-    if (!remaining.length) await sb("communities?id=eq." + current.community_id, { method: "PATCH", body: JSON.stringify({ status: "inactive", updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+  for (const affectedCommunityId of new Set([current.community_id, communityId])) {
+    const [communityRows, mainRows, subgroupRows, planRows] = await Promise.all([
+      sb("communities?select=id,status&id=eq." + affectedCommunityId + "&limit=1"),
+      sb("whatsapp_groups?select=id,external_group_id&community_id=eq." + affectedCommunityId + "&group_type=eq.main&is_active=eq.true"),
+      sb("whatsapp_groups?select=id&community_id=eq." + affectedCommunityId + "&group_type=eq.subgroup&is_active=eq.true"),
+      sb("plans?select=id&community_id=eq." + affectedCommunityId + "&is_active=eq.true&limit=1"),
+    ]);
+    const ready = mainRows.length === 1 && Boolean(mainRows[0].external_group_id) && subgroupRows.length > 0 && planRows.length > 0;
+    if (communityRows[0]?.status === "active" && !ready) {
+      await sb("communities?id=eq." + affectedCommunityId, { method: "PATCH", body: JSON.stringify({ status: "inactive", updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
+    }
   }
   await writeAudit(user, "whatsapp_group.settings_updated", "whatsapp_group", groupId, current, patch);
   return { status: 200, body: { message: "Grupo atualizado.", data: { ...current, ...patch } } };
@@ -722,7 +730,7 @@ export default async (request) => {
         subgroup_invite_url: subgroupAccess.find((item)=>item.invite_url)?.invite_url || null,
         subgroup_invite_urls: subgroupAccess.filter((item)=>item.invite_url).map((item)=>({id:item.id,name:item.name,url:item.invite_url})),
       };
-      await writeAudit(null,"registration.created","registration",subscriptionId,null,{member_id:member.id,community_id:body.community_id,subgroup_ids:subgroupIds,access:accessState});
+      await writeAudit(null,"registration.created","registration",subscriptionId,null,{member_id:member.id,community_id:body.community_id,subgroup_ids:subgroupIds,access:accessState},member.id);
       return json(201,{reference:subscriptionId,status:"approved",payment:{reference:subscriptionId,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null},access:accessState});
     }
     if (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST") {
