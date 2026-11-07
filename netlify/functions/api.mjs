@@ -91,11 +91,10 @@ async function publicPlan() {
 }
 
 async function adminDashboard() {
-  const [members, subscriptions, payments, groups, connections, operations] = await Promise.all([
+  const [members, subscriptions, payments, connections, operations] = await Promise.all([
     sb("members?select=id,status,created_at"),
     sb("subscriptions?select=id,member_id,status,expires_at,grace_ends_at,created_at"),
     sb("payments?select=id,amount,status,paid_at,created_at"),
-    sb("whatsapp_groups?select=id,is_active"),
     sb("whatsapp_connections?select=id,connection_status,last_connected_at,last_disconnected_at,last_error&order=updated_at.desc&limit=1"),
     sb("access_operations?select=id,status,operation_type&operation_type=eq.remove&status=in.(queued,processing,retry_pending)"),
   ]);
