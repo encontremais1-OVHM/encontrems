@@ -48,7 +48,7 @@ async function bridge(path, method = "GET", body) {
     method,
     headers: { authorization: `Bearer ${BRIDGE_TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(path === "/status" ? 5000 : 20000),
   });
   const text = await response.text();
   const data = text ? (() => { try { return JSON.parse(text); } catch { return { message: text }; } })() : {};
@@ -179,6 +179,7 @@ async function syncWhatsApp(communityId) {
   const groupsResult = await bridge("/groups");
   const connectionId = await ensureConnection(communityId,"connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
+  const chunk = (items, size = 150) => Array.from({length:Math.ceil(items.length/size)},(_,i)=>items.slice(i*size,(i+1)*size));
   for (const group of groupsResult.groups || []) {
     const stored = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
       method:"POST",
@@ -186,25 +187,43 @@ async function syncWhatsApp(communityId) {
       headers:{Prefer:"resolution=merge-duplicates,return=representation"},
     });
     const dbGroup = stored[0];
+    if (!dbGroup?.id) throw new Error("O Supabase não confirmou o registo do grupo " + (group.subject || group.id));
     groupsImported++;
     const participants = await bridge("/groups/" + encodeURIComponent(group.id) + "/participants");
+    const valid = [];
     for (const participant of participants.participants || []) {
       const jid = String(participant.id || "");
       const phone = digits(jid.split("@")[0].split(":")[0]);
       if (!/^\d{8,15}$/.test(phone)) { skipped++; continue; }
-      let existing = await sb("members?select=id&phone_e164=eq." + phone + "&limit=1");
-      let memberId = existing[0]?.id;
-      if (!memberId) {
-        const created = await sb("members", {method:"POST",body:JSON.stringify([{full_name:phone,phone,phone_e164:phone,status:"active",registration_source:"whatsapp_import",country:"Angola"}]),headers:{Prefer:"return=representation"}});
-        memberId = created[0].id;
-      }
-      await sb("group_memberships?on_conflict=member_id,whatsapp_group_id", {
+      valid.push({jid,phone});
+    }
+    const uniquePhones = [...new Set(valid.map((p)=>p.phone))];
+    const memberByPhone = new Map();
+    for (const phoneChunk of chunk(uniquePhones)) {
+      const filter = phoneChunk.map(encodeURIComponent).join(",");
+      const existing = await sb("members?select=id,phone_e164&phone_e164=in.(" + filter + ")");
+      for (const member of existing) memberByPhone.set(member.phone_e164,member.id);
+    }
+    const missing = uniquePhones.filter((phone)=>!memberByPhone.has(phone));
+    for (const phoneChunk of chunk(missing)) {
+      const created = await sb("members?on_conflict=phone_e164",{
         method:"POST",
-        body:JSON.stringify([{member_id:memberId,whatsapp_group_id:dbGroup.id,external_participant_id:jid,status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date())}]),
+        body:JSON.stringify(phoneChunk.map((phone)=>({full_name:phone,phone,phone_e164:phone,status:"active",registration_source:"whatsapp_import",country:"Angola"}))),
+        headers:{Prefer:"resolution=ignore-duplicates,return=representation"},
+      });
+      for (const member of created || []) memberByPhone.set(member.phone_e164,member.id);
+    }
+    const memberships = valid.filter((p)=>memberByPhone.has(p.phone)).map((p)=>({
+      member_id:memberByPhone.get(p.phone),whatsapp_group_id:dbGroup.id,
+      external_participant_id:p.jid,status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date()),
+    }));
+    for (const batch of chunk(memberships)) {
+      await sb("group_memberships?on_conflict=member_id,whatsapp_group_id",{
+        method:"POST",body:JSON.stringify(batch),
         headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
       });
-      contactsImported++;
     }
+    contactsImported += memberships.length;
   }
   await ensureConnection(communityId,"connected");
   return {groups_imported:groupsImported,contacts_imported:contactsImported,participants_skipped:skipped};
