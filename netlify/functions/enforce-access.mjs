@@ -44,7 +44,7 @@ async function processPendingAdditions(now, nowIso) {
   let pending = 0;
   for (const operation of due) {
     const [groups, memberships] = await Promise.all([
-      db("whatsapp_groups?select=id,community_id,external_group_id,is_active&id=eq." + operation.whatsapp_group_id + "&limit=1"),
+      db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active&id=eq." + operation.whatsapp_group_id + "&limit=1"),
       db("group_memberships?select=id,status&member_id=eq." + operation.member_id + "&whatsapp_group_id=eq." + operation.whatsapp_group_id + "&limit=1"),
     ]);
     const group = groups[0];
@@ -105,7 +105,7 @@ async function processPendingAdditions(now, nowIso) {
       headers: { Prefer: "return=minimal" },
     });
     try {
-      await bridge("/groups/" + encodeURIComponent(group.external_group_id) + "/participants/add", { phone });
+      await bridge(group.group_type === "community" ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants/add" : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants/add", { phone });
       await db("group_memberships?id=eq." + membership.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "joined", joined_at: nowIso, removed_at: null, last_synced_at: nowIso, updated_at: nowIso }),
@@ -222,10 +222,10 @@ export default async (_request) => {
         headers: { Prefer: "return=minimal" },
       });
       try {
-        const groupRows = await db("whatsapp_groups?select=external_group_id&id=eq." + membership.whatsapp_group_id + "&limit=1");
+        const groupRows = await db("whatsapp_groups?select=external_group_id,group_type&id=eq." + membership.whatsapp_group_id + "&limit=1");
         const externalGroupId = groupRows[0]?.external_group_id;
         if (!externalGroupId) throw new Error("Identificador do grupo WhatsApp não disponível.");
-        await bridge("/groups/" + encodeURIComponent(externalGroupId) + "/participants/remove", {
+        await bridge(groupRows[0]?.group_type === "community" ? "/communities/" + encodeURIComponent(externalGroupId) + "/participants/remove" : "/groups/" + encodeURIComponent(externalGroupId) + "/participants/remove", {
           participant: membership.external_participant_id,
         });
         await db("group_memberships?id=eq." + membership.id, {
