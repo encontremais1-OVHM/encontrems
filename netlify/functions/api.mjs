@@ -393,8 +393,23 @@ export default async (request) => {
         headers:{Prefer:"resolution=merge-duplicates,return=representation"},
       });
       const member = memberRows[0];
-      const existing = await sb("subscriptions?select=id,status,expires_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&status=in.(pending,active,grace_period,suspended)&limit=1");
-      let subscriptionId = existing[0]?.id;
+      const previousSubs = await sb("subscriptions?select=id,status,expires_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&order=created_at.desc&limit=1");
+      let subscriptionId = previousSubs[0]?.id;
+      if (previousSubs[0] && ["expired","cancelled","suspended"].includes(previousSubs[0].status)) {
+        if (Number(plan.renewal_price) !== 1000) return json(409,{message:"O plano de renovação não está configurado para 1.000 Kz."});
+        const renewals = await sb("payments?select=id,status,payment_reference,amount&subscription_id=eq."+subscriptionId+"&payment_type=eq.renewal&order=created_at.desc&limit=50");
+        const pendingRenewal = renewals.find((p)=>["initiated","pending","under_review"].includes(p.status));
+        if (pendingRenewal) {
+          return json(201,{reference:subscriptionId,status:"pending_payment",payment:{reference:pendingRenewal.payment_reference,amount_kz:Number(pendingRenewal.amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+        }
+        const referenceCode = "EN-R-" + crypto.randomUUID().slice(0,8).toUpperCase();
+        const createdPayment = await sb("payments",{
+          method:"POST",
+          body:JSON.stringify([{member_id:member.id,subscription_id:subscriptionId,amount:1000,currency:"AOA",payment_type:"renewal",provider:"manual",status:"pending",payment_reference:referenceCode,idempotency_key:"renewal:"+subscriptionId+":"+(renewals.length+1)}]),
+          headers:{Prefer:"return=representation"},
+        });
+        return json(201,{reference:subscriptionId,status:"pending_payment",payment:{reference:createdPayment[0].payment_reference,amount_kz:Number(createdPayment[0].amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+      }
       if (!subscriptionId) {
         const createdSubscription = await sb("subscriptions",{method:"POST",body:JSON.stringify([{member_id:member.id,community_id:body.community_id,plan_id:plan.id,status:"active",starts_at:iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),activated_at:iso(now)}]),headers:{Prefer:"return=representation"}});
         subscriptionId = createdSubscription[0].id;
@@ -432,10 +447,11 @@ export default async (request) => {
       const plans = await sb("plans?select=renewal_price,duration_days,grace_days&id=eq."+sub.plan_id+"&limit=1");
       const plan = plans[0];
       if (!plan || Number(plan.renewal_price) !== 1000) return json(409,{message:"O preço de renovação não está configurado para 1.000 Kz."});
-      const pending = await sb("payments?select=id,payment_reference,amount,status,created_at&subscription_id=eq."+sub.id+"&payment_type=eq.renewal&status=in.(pending,under_review,initiated)&order=created_at.desc&limit=1");
-      if (pending[0]) return json(200,{reference:sub.id,status:"pending",payment:{reference:pending[0].payment_reference,amount_kz:Number(pending[0].amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+      const renewals = await sb("payments?select=id,payment_reference,amount,status&subscription_id=eq."+sub.id+"&payment_type=eq.renewal&order=created_at.desc&limit=50");
+      const pending = renewals.find((p)=>["pending","under_review","initiated"].includes(p.status));
+      if (pending) return json(200,{reference:sub.id,status:"pending",payment:{reference:pending.payment_reference,amount_kz:Number(pending.amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
       const referenceCode = "EN-R-" + crypto.randomUUID().slice(0,8).toUpperCase();
-      const idempotencyKey = "renewal:" + sub.id + ":" + String(sub.expires_at || "initial");
+      const idempotencyKey = "renewal:" + sub.id + ":" + (renewals.length+1);
       const created = await sb("payments",{
         method:"POST",
         body:JSON.stringify([{
