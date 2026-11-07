@@ -442,7 +442,8 @@ async function confirmRenewalPayment(paymentId) {
       continue;
     }
     const groupRows=await sb("whatsapp_groups?select=external_group_id,group_type&id=eq."+membership.whatsapp_group_id+"&limit=1");
-    const externalGroupId=groupRows[0]?.external_group_id;\n    const isCommunity=groupRows[0]?.group_type==="community";
+    const externalGroupId=groupRows[0]?.external_group_id;
+    const isCommunity=groupRows[0]?.group_type==="community";
     if(!externalGroupId) continue;
     try{
       await bridge(isCommunity ? "/communities/"+encodeURIComponent(externalGroupId)+"/participants/add" : "/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
@@ -531,7 +532,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
       const jid = String(participant.id || "");
       if (!jid.endsWith("@s.whatsapp.net")) { skipped++; continue; }
       const phone = digits(jid.split("@")[0].split(":")[0]);
-      if (!/^\\d{8,15}$/.test(phone)) { skipped++; continue; }
+      if (!/^\d{8,15}$/.test(phone)) { skipped++; continue; }
       valid.push({ jid, phone });
     }
     const uniquePhones = [...new Set(valid.map((participant) => participant.phone))];
@@ -669,9 +670,13 @@ export default async (request) => {
       return json(200,await bridge("/pairing-code","POST",{phone}));
     }
     if (path === "/admin/whatsapp/disconnect" && method === "POST") return json(200,await bridge("/disconnect","POST",{}));
-    if (path === "/admin/whatsapp/communities" && method === "GET") return json(200,await bridge("/communities"));\n    if (path === "/admin/whatsapp/sync" && method === "POST") {
+    if (path === "/admin/whatsapp/communities" && method === "GET") return json(200,await bridge("/communities"));
+    if (path === "/admin/whatsapp/sync" && method === "POST") {
       const body = await request.json().catch(() => ({}));
-      const communityId = isUuid(body.community_id) ? body.community_id : null;\n      const whatsappCommunityId = String(body.whatsapp_community_id || "");\n      if (!communityId || !whatsappCommunityId.endsWith("@g.us")) return json(422,{message:"Escolha a comunidade da plataforma e a Comunidade do WhatsApp."});\n      const result = await syncWhatsApp(communityId,whatsappCommunityId);
+      const communityId = isUuid(body.community_id) ? body.community_id : null;
+      const whatsappCommunityId = String(body.whatsapp_community_id || "");
+      if (!communityId || !whatsappCommunityId.endsWith("@g.us")) return json(422,{message:"Escolha a comunidade da plataforma e a Comunidade do WhatsApp."});
+      const result = await syncWhatsApp(communityId,whatsappCommunityId);
       return json(200,result);
     }
     if (path === "/public/registrations" && method === "POST") {
