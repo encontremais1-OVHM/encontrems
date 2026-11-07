@@ -1,31 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { RefreshCcw } from "lucide-react";
-
-import { ModulePlaceholder } from "@/components/app/ModulePlaceholder";
+import { AdminResourceList } from "@/components/app/AdminResourceList";
 
 export const Route = createFileRoute("/superadmin/assinaturas")({
-  head: () => ({
-    meta: [
-      { title: "Assinaturas — Encontre +" },
-      { name: "description", content: "Estados, vencimentos e histórico de renovações — todos calculados pelo backend." },
-      { property: "og:title", content: "Assinaturas — Encontre +" },
-      { property: "og:description", content: "Estados, vencimentos e histórico de renovações — todos calculados pelo backend." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: AssinaturasPage,
+  head: () => ({ meta: [{ title: "Assinaturas — Encontre +" }] }),
+  component: () => <AdminResourceList resource="subscriptions" title="Assinaturas" description="Subscrições, períodos de 30 dias, datas de renovação e tolerância de 5 dias." columns={[{"key":"member_name","label":"Membro"},{"key":"phone","label":"WhatsApp"},{"key":"community_name","label":"Comunidade"},{"key":"plan_name","label":"Plano"},{"key":"status","label":"Estado"},{"key":"expires_at","label":"Expira em"},{"key":"grace_ends_at","label":"Fim da tolerância"}]} />,
 });
-
-function AssinaturasPage() {
-  return (
-    <ModulePlaceholder
-      icon={RefreshCcw}
-      title="Assinaturas"
-      description="Estados, vencimentos e histórico de renovações — todos calculados pelo backend."
-      phase={3}
-      features={["Estados: Pendente, Ativa, Tolerância, Expirada, Suspensa, Cancelada", "Dias restantes e vencimento em Africa/Luanda", "Histórico de renovações por membro", "Transições de estado executadas pelo Laravel Scheduler"]}
-      endpoints={["GET /admin/subscriptions", "GET /admin/subscriptions/{id}", "GET /admin/members/{id}/subscriptions"]}
-    />
-  );
-}
