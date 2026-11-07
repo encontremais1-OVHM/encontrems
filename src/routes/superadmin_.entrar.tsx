@@ -38,7 +38,7 @@ const schema = z.object({
 function LoginPage() {
   const navigate = useNavigate();
   const configured = isSupabaseConfigured();
-  const [email, setEmail] = useState("hgconnect1@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -89,13 +89,14 @@ function LoginPage() {
             </Alert>
           )}
 
-          <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+          <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate autoComplete="off">
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
-                autoComplete="username"
+                name="superadmin-login-email"
+                autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={!configured || submitting}
