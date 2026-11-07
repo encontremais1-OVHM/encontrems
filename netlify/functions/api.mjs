@@ -441,11 +441,11 @@ async function confirmRenewalPayment(paymentId) {
       await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
       continue;
     }
-    const groupRows=await sb("whatsapp_groups?select=external_group_id&id=eq."+membership.whatsapp_group_id+"&limit=1");
-    const externalGroupId=groupRows[0]?.external_group_id;
+    const groupRows=await sb("whatsapp_groups?select=external_group_id,group_type&id=eq."+membership.whatsapp_group_id+"&limit=1");
+    const externalGroupId=groupRows[0]?.external_group_id;\n    const isCommunity=groupRows[0]?.group_type==="community";
     if(!externalGroupId) continue;
     try{
-      await bridge("/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
+      await bridge(isCommunity ? "/communities/"+encodeURIComponent(externalGroupId)+"/participants/add" : "/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
       await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(now),removed_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     }catch{
       await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
@@ -625,7 +625,7 @@ export default async (request) => {
     }
     if (path === "/admin/whatsapp/groups" && method === "GET") {
       const [groups,memberships,members] = await Promise.all([
-        sb("whatsapp_groups?select=id,name,description,external_group_id,group_type,sync_status,is_active,community_id&order=name.asc"),
+        sb("whatsapp_groups?select=id,name,description,external_group_id,group_type,sync_status,is_active,community_id,image_url,linked_parent_id&order=name.asc"),
         sb("group_memberships?select=member_id,whatsapp_group_id,status,external_participant_id"),
         sb("members?select=id,full_name,phone_e164,phone,email"),
       ]);
@@ -669,12 +669,9 @@ export default async (request) => {
       return json(200,await bridge("/pairing-code","POST",{phone}));
     }
     if (path === "/admin/whatsapp/disconnect" && method === "POST") return json(200,await bridge("/disconnect","POST",{}));
-    if (path === "/admin/whatsapp/sync" && method === "POST") {
+    if (path === "/admin/whatsapp/communities" && method === "GET") return json(200,await bridge("/communities"));\n    if (path === "/admin/whatsapp/sync" && method === "POST") {
       const body = await request.json().catch(() => ({}));
-      const communities = await sb("communities?select=id&status=eq.active&limit=1");
-      const communityId = isUuid(body.community_id) ? body.community_id : communities[0]?.id;
-      if (!communityId) return json(409,{message:"Crie uma comunidade ativa antes de sincronizar os grupos."});
-      const result = await syncWhatsApp(communityId);
+      const communityId = isUuid(body.community_id) ? body.community_id : null;\n      const whatsappCommunityId = String(body.whatsapp_community_id || "");\n      if (!communityId || !whatsappCommunityId.endsWith("@g.us")) return json(422,{message:"Escolha a comunidade da plataforma e a Comunidade do WhatsApp."});\n      const result = await syncWhatsApp(communityId,whatsappCommunityId);
       return json(200,result);
     }
     if (path === "/public/registrations" && method === "POST") {
@@ -687,12 +684,12 @@ export default async (request) => {
       }
       const [community,subgroups,mainGroups,plans] = await Promise.all([
         sb("communities?select=id,status&id=eq."+body.community_id+"&status=eq.active"),
-        sb("whatsapp_groups?select=id,name,community_id,external_group_id,invite_link,group_type,is_active&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
-        sb("whatsapp_groups?select=id,name,external_group_id,invite_link,group_type,is_active&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.main"),
+        sb("whatsapp_groups?select=id,name,community_id,external_group_id,invite_link,group_type,is_active,image_url&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
+        sb("whatsapp_groups?select=id,name,external_group_id,invite_link,group_type,is_active,image_url&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.community"),
         sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
       ]);
       if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id || !g.external_group_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis. Todos os grupos escolhidos precisam estar sincronizados."});
-      if (mainGroups.length !== 1 || !mainGroups[0].external_group_id) return json(409,{message:"Esta comunidade ainda não tem um único grupo principal ativo e sincronizado. Contacte a equipa Encontre +."});
+      if (mainGroups.length !== 1 || !mainGroups[0].external_group_id) return json(409,{message:"Esta comunidade ainda não tem uma Comunidade WhatsApp associada e ativa. Contacte a equipa Encontre +."});
       const now = new Date();
       const plan = plans[0];
       if (Number(plan.initial_price) !== 0) return json(409,{message:"O plano ainda não está configurado para adesão gratuita."});
@@ -767,7 +764,7 @@ export default async (request) => {
             const attempt = Number(operation.attempts || 0) + 1;
             await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "processing", attempts: attempt, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
             try {
-              await bridge("/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
+              await bridge(target.kind === "community" ? "/communities/"+encodeURIComponent(target.group.external_group_id)+"/participants/add" : "/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
               accessStatus = "joined";
               await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
               await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "succeeded", executed_at: iso(new Date()), last_error: null, next_retry_at: null, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
