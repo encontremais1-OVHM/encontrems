@@ -94,8 +94,8 @@ function WhatsappPage() {
           </div>
           {status.data?.last_error && <p className="flex gap-2 text-sm text-destructive"><CircleAlert className="size-4 shrink-0" />{status.data.last_error}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => connect.mutate()} disabled={connected || connect.isPending || status.isPending}>
-              {connect.isPending ? <Loader2 className="animate-spin" /> : <QrCode />} Gerar QR Code
+            <Button onClick={() => connect.mutate()} disabled={connected || state === "connecting" || connect.isPending || status.isPending}>
+              {connect.isPending ? <Loader2 className="animate-spin" /> : <QrCode />} {state === "connecting" ? "A aguardar leitura" : "Gerar QR Code"}
             </Button>
             <Button variant="outline" onClick={() => disconnect.mutate()} disabled={!connected || disconnect.isPending}>
               {disconnect.isPending ? <Loader2 className="animate-spin" /> : null} Desconectar
