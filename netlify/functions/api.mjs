@@ -93,8 +93,8 @@ async function adminDashboard() {
   ]);
   const now = Date.now();
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-  const active = subscriptions.filter((s) => s.status === "active").length;
-  const grace = subscriptions.filter((s) => s.status === "grace_period").length;
+  const active = subscriptions.filter((s) => s.status === "active" && (!s.expires_at || new Date(s.expires_at).getTime() > now)).length;
+  const grace = subscriptions.filter((s) => s.status === "grace_period" || (s.status === "active" && s.expires_at && new Date(s.expires_at).getTime() <= now && (!s.grace_ends_at || new Date(s.grace_ends_at).getTime() >= now))).length;
   const expired = subscriptions.filter((s) => s.status === "expired" || (s.grace_ends_at && new Date(s.grace_ends_at).getTime() < now)).length;
   const dueSoon = subscriptions.filter((s) => s.expires_at && new Date(s.expires_at).getTime() >= now && new Date(s.expires_at).getTime() <= now + 7 * 86400000).length;
   const paid = payments.filter((p) => p.status === "paid");
@@ -150,7 +150,7 @@ async function adminMembers(q) {
     return {
       id: m.id, full_name: m.full_name, whatsapp: m.phone_e164 || m.phone, email: m.email,
       province: m.province || "", city: m.city || "", registered_at: m.created_at,
-      subscription_status: sub?.status || null, due_at: due,
+      subscription_status: !sub ? null : (sub.grace_ends_at && new Date(sub.grace_ends_at).getTime() < Date.now() ? "expired" : (sub.expires_at && new Date(sub.expires_at).getTime() <= Date.now() ? "grace_period" : sub.status)), due_at: due,
       access_status: access.get(m.id) || "none",
     };
   });
@@ -241,7 +241,8 @@ async function ensureConnection(communityId, status) {
     await sb("whatsapp_connections?id=eq." + rows[0].id, { method:"PATCH", body: JSON.stringify({connection_status:status,updated_at:iso(new Date())}), headers: { Prefer:"return=minimal" } });
     return rows[0].id;
   }
-  const created = await sb("whatsapp_connections", { method:"POST", body:JSON.stringify({community_id:communityId,name:"Encontre + Principal",provider:"baileys",connection_status:status}), headers:{Prefer:"return=representation"} });
+  const now = iso(new Date());
+  const created = await sb("whatsapp_connections", { method:"POST", body:JSON.stringify({community_id:communityId,name:"Encontre + Principal",provider:"baileys",connection_status:status,last_connected_at:status==="connected"?now:null,last_disconnected_at:status==="disconnected"?now:null}), headers:{Prefer:"return=representation"} });
   return created[0].id;
 }
 
