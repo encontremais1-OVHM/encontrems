@@ -137,17 +137,18 @@ async function adminResource(resource) {
     }))};
   }
   if (resource === "registrations") {
-    const [members,subscriptions,memberships,groups] = await Promise.all([
+    const [members,subscriptions,memberships,groups,communities] = await Promise.all([
       sb("members?select=id,full_name,phone_e164,phone,email,city,province,status,registration_source,created_at&registration_source=eq.web&order=created_at.desc&limit=500"),
-      sb("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&order=created_at.desc"),
+      sb("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at,created_at&order=created_at.desc"),
       sb("group_memberships?select=member_id,whatsapp_group_id,status"),
       sb("whatsapp_groups?select=id,name,community_id,group_type"),
+      sb("communities?select=id,name"),
     ]);
     return {data:members.map((m)=>{
       const sub=subscriptions.find((s)=>s.member_id===m.id);
       const selected = memberships.filter((membership)=>membership.member_id===m.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup"));
       const main = memberships.find((membership)=>membership.member_id===m.id && membership.status==="joined" && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="main"));
-      return {...m,community_name:groups.find((g)=>g.community_id===sub?.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>groups.find((g)=>g.id===membership.whatsapp_group_id)?.name).filter(Boolean).join(", "),community_access:main?"joined":"pending",subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
+      return {...m,community_name:communities.find((community)=>community.id===sub?.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>({name:groups.find((g)=>g.id===membership.whatsapp_group_id)?.name || "Grupo",status:membership.status})),community_access:main?"joined":"pending",subscription_status:sub?.status || "sem_subscrição",expires_at:sub?.expires_at || null};
     })};
   }
   if (resource === "notifications") {
@@ -177,7 +178,7 @@ async function adminResource(resource) {
 
 
 function makeSlug(value) {
-  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
 }
 
 async function writeAudit(user, action, entityType, entityId, oldValues, newValues) {
@@ -534,7 +535,7 @@ export default async (request) => {
       const result = await adminCreateCommunity(body, user);
       return json(result.status, result.body);
     }
-    const communityAction = path.match(/^\\/admin\\/communities\\/([0-9a-f-]{36})$/i);
+    const communityAction = path.match(/^\/admin\/communities\\/([0-9a-f-]{36})$/i);
     if (communityAction && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateCommunity(communityAction[1], body, user);
@@ -588,7 +589,7 @@ export default async (request) => {
         participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
       }))});
     }
-    const groupSettings = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})\\/settings$/i);
+    const groupSettings = path.match(/^\/admin\/whatsapp\/groups\\/([0-9a-f-]{36})\\/settings$/i);
     if (groupSettings && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateGroup(groupSettings[1], body, user);
@@ -706,7 +707,7 @@ export default async (request) => {
             await bridge("/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
             accessStatus = "joined";
             await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
-          } catch (error) {
+          } catch {
             await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
           }
         }
