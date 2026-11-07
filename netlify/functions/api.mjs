@@ -177,13 +177,15 @@ async function ensureConnection(communityId, status) {
 
 async function syncWhatsApp(communityId) {
   const groupsResult = await bridge("/groups");
+  const communityRows = await sb("communities?select=name&id=eq."+communityId+"&limit=1");
+  const communityName = String(communityRows[0]?.name || "").trim().toLowerCase();
   const connectionId = await ensureConnection(communityId,"connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({length:Math.ceil(items.length/size)},(_,i)=>items.slice(i*size,(i+1)*size));
   for (const group of groupsResult.groups || []) {
     const stored = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
       method:"POST",
-      body:JSON.stringify([{community_id:communityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:"subgroup",is_active:true,sync_status:"synced"}]),
+      body:JSON.stringify([{community_id:communityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:String(group.subject || "").trim().toLowerCase() === communityName ? "main" : "subgroup",is_active:true,sync_status:"synced"}]),
       headers:{Prefer:"resolution=merge-duplicates,return=representation"},
     });
     const dbGroup = stored[0];
