@@ -98,11 +98,13 @@ function OptionCard({
   onSelect,
   title,
   description,
+  imageUrl,
 }: {
   selected: boolean;
   onSelect: () => void;
   title: string;
   description?: string | null;
+  imageUrl?: string | null;
 }) {
   return (
     <button
@@ -110,19 +112,26 @@ function OptionCard({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        "flex w-full items-start gap-3 rounded-xl border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-card",
+        "flex w-full items-center gap-3 rounded-xl border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-card",
         selected && "border-primary ring-2 ring-primary/15",
       )}
     >
+      {imageUrl ? (
+        <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-14 shrink-0 rounded-xl object-cover" />
+      ) : (
+        <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+          <UsersRound className="size-6" />
+        </span>
+      )}
       <span
         className={cn(
-          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
+          "flex size-5 shrink-0 items-center justify-center rounded-full border",
           selected ? "border-primary bg-primary text-primary-foreground" : "border-input",
         )}
       >
         {selected && <Check className="size-3" />}
       </span>
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1">
         <span className="block font-semibold text-foreground">{title}</span>
         {description && <span className="mt-0.5 block text-sm text-muted-foreground">{description}</span>}
       </span>
@@ -299,6 +308,7 @@ function InscricaoPage() {
                         }}
                         title={c.name}
                         description={c.description}
+                        imageUrl={c.image_url}
                       />
                     ))}
                     <div className="flex justify-end pt-3">
@@ -325,6 +335,7 @@ function InscricaoPage() {
                           onSelect={() => setSubgroupIds((current)=>current.includes(s.id)?current.filter((id)=>id!==s.id):[...current,s.id])}
                           title={s.name}
                           description={s.description}
+                          imageUrl={s.image_url}
                         />
                       ))
                     )}
