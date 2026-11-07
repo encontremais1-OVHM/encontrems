@@ -87,7 +87,7 @@ export function deriveJourney(s: RegistrationStatusResponse): JourneyStep[] {
   ): JourneyStep => ({
     key,
     label,
-    state: link
+    state: link || status === "active"
       ? "done"
       : status === "failed"
         ? "failed"
