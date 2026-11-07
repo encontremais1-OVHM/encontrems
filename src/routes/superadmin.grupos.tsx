@@ -27,6 +27,7 @@ function GruposPage() {
   const [syncWhatsAppCommunityId, setSyncWhatsAppCommunityId] = useState("");
   const [syncResult, setSyncResult] = useState<{ groups_imported: number; subgroups_imported: number; contacts_imported: number; participants_skipped: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
 
   const query = useQuery({ queryKey: ["whatsapp", "groups"], queryFn: () => apiRequest<{ data: WhatsAppGroup[] }>("/admin/whatsapp/groups"), retry: false });
@@ -66,6 +67,7 @@ function GruposPage() {
     mutationFn: (id: string) => apiRequest<{ message: string }>("/admin/whatsapp/groups/" + id, { method: "DELETE" }),
     onSuccess: async result => {
       setActionError(null);
+      setActionNotice(result.message);
       setSyncResult(null);
       await query.refetch();
       await client.invalidateQueries({ queryKey: ["admin", "resource", "communities"] });
@@ -79,7 +81,7 @@ function GruposPage() {
     mutationFn: (id: string) => apiRequest<{ message: string }>("/admin/whatsapp/groups/" + id + "/restore", { method: "POST" }),
     onSuccess: async result => {
       await query.refetch();
-      setActionError(result.message);
+      setActionNotice(result.message);
     },
     onError: error => setActionError(describeApiError(error)),
   });
@@ -92,6 +94,7 @@ function GruposPage() {
     {communities.isError && <ApiErrorNotice message={describeApiError(communities.error)} onRetry={() => communities.refetch()} />}
     {whatsappCommunities.isError && <ApiErrorNotice message={describeApiError(whatsappCommunities.error)} onRetry={() => whatsappCommunities.refetch()} />}
     {actionError && <ApiErrorNotice message={actionError} onRetry={() => setActionError(null)} />}
+    {actionNotice && <p className="rounded-lg border border-success/30 bg-success/5 px-4 py-3 text-sm text-success">{actionNotice}</p>}
 
     <section className="rounded-xl border bg-card p-5 shadow-card space-y-4">
       <div>
@@ -138,7 +141,7 @@ function GruposPage() {
         <p className="text-sm text-muted-foreground">{visibleGroups.length} elementos apresentados · {visibleGroups.reduce((n, group) => n + group.participants_count, 0)} participações registadas</p>
         <Button size="sm" variant="outline" onClick={() => setShowRemoved(value => !value)}>{showRemoved ? "Ocultar removidos" : "Mostrar removidos"}</Button>
       </div>
-      {visibleGroups.length ? visibleGroups.map(group => <section key={group.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
+      {visibleGroups.length ? <div className="space-y-3">{visibleGroups.map(group => <section key={group.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
         <button type="button" className="flex w-full items-center gap-3 p-4 text-left" onClick={() => setExpanded(expanded === group.id ? null : group.id)} aria-expanded={expanded === group.id}>
           {group.image_url ? <img src={group.image_url} alt="" className="size-12 shrink-0 rounded-xl object-cover" referrerPolicy="no-referrer" /> : <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><MessageCircle className="size-5" /></span>}
           <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-foreground">{group.name}</span><span className="mt-0.5 block text-xs text-muted-foreground">{group.group_type === "community" ? "Comunidade WhatsApp" : "Grupo interno"} · {group.participants_count} contactos · {group.sync_status === "synced" ? "Sincronizado" : "Sincronização pendente"}</span></span>
@@ -155,7 +158,6 @@ function GruposPage() {
           <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant={group.group_type === "community" ? "success" : "neutral"}>{group.group_type === "community" ? "Entrada na Comunidade obrigatória" : "Subgrupo selecionável"}</Badge><span className="text-xs text-muted-foreground">O elemento só aparece no formulário se estiver disponível.</span></div>
           {group.participants.length ? <div className="space-y-2">{group.participants.map(person => <div key={person.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/40 px-3 py-2"><span className="flex size-8 items-center justify-center rounded-full bg-background"><Users className="size-4 text-muted-foreground" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium text-foreground">{person.name}</span><span className="block text-xs text-muted-foreground">{formatPhone(person.phone)}{person.email ? " · " + person.email : ""}</span></span><Badge variant="success">No grupo</Badge></div>)}</div> : <p className="py-5 text-center text-sm text-muted-foreground">{group.group_type === "community" ? "A Comunidade não é importada como grupo interno." : "Ainda não existem contactos com número de telefone importável neste grupo."}</p>}
         </div>}
-      </section>)}
-    </div> : null}
+      </section>)}</div> : <div className="rounded-xl border border-dashed bg-card p-10 text-center"><MessageCircle className="mx-auto size-8 text-muted-foreground" /><h2 className="mt-3 font-semibold text-foreground">{showRemoved ? "Nenhum elemento encontrado" : "Nenhuma Comunidade sincronizada"}</h2><p className="mt-1 text-sm text-muted-foreground">{showRemoved ? "Não existem elementos nesta vista." : "Ligue a conta WhatsApp, escolha uma Comunidade da plataforma e sincronize a Comunidade WhatsApp correspondente."}</p></div>}
   </div>;
 }
