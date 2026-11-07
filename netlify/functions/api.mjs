@@ -9,3 +9,340 @@ const json = (statusCode, payload) => Response.json(payload, {
   status: statusCode,
   headers: { "cache-control": "no-store" },
 });
+
+async function sb(path, init = {}) {
+  if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Supabase server configuration is incomplete.");
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: SERVICE_KEY,
+      authorization: `Bearer ${SERVICE_KEY}`,
+      "content-type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+  const text = await response.text();
+  const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+  if (!response.ok) {
+    const message = data && typeof data === "object" ? data.message || data.details || data.hint : data;
+    throw new Error(`Supabase ${response.status}: ${message || "request failed"}`);
+  }
+  return data;
+}
+
+async function requireSuperAdmin(request) {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SUPABASE_ANON_KEY, authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return null;
+  const user = await response.json();
+  return user.email?.toLowerCase() === OWNER_EMAIL && user.app_metadata?.role === "super_admin" ? user : null;
+}
+
+async function bridge(path, method = "GET", body) {
+  if (!BRIDGE_URL || !BRIDGE_TOKEN) throw new Error("A ligação segura ao serviço WhatsApp ainda não está configurada no servidor.");
+  const response = await fetch(`${BRIDGE_URL}/v1${path}`, {
+    method,
+    headers: { authorization: `Bearer ${BRIDGE_TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(20000),
+  });
+  const text = await response.text();
+  const data = text ? (() => { try { return JSON.parse(text); } catch { return { message: text }; } })() : {};
+  if (!response.ok) {
+    const error = new Error(data.message || data.error || `WhatsApp bridge returned ${response.status}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+  return data;
+}
+
+const digits = (value) => String(value || "").replace(/\D/g, "");
+const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+const iso = (date) => date.toISOString();
+
+async function publicCommunities() {
+  const [communities, groups] = await Promise.all([
+    sb("communities?select=id,name,slug,description,status&status=eq.active&order=name.asc"),
+    sb("whatsapp_groups?select=id,community_id,name,description,group_type,is_active&is_active=eq.true&order=name.asc"),
+  ]);
+  return { data: communities.map((c) => ({
+    id: c.id, slug: c.slug, name: c.name, description: c.description, purpose: c.description,
+    image_url: null,
+    subgroups: groups.filter((g) => g.community_id === c.id).map((g) => ({ id: g.id, slug: g.id, name: g.name, description: g.description })),
+  })) };
+}
+
+async function publicPlan() {
+  const rows = await sb("plans?select=initial_price,renewal_price,duration_days,grace_days&is_active=eq.true&order=created_at.asc&limit=1");
+  const p = rows?.[0];
+  if (!p) return { initial_price_kz: 0, renewal_price_kz: 1000, duration_days: 30, warning_day: 27, grace_days: 5 };
+  return { initial_price_kz: Number(p.initial_price), renewal_price_kz: Number(p.renewal_price), duration_days: p.duration_days, warning_day: 27, grace_days: p.grace_days };
+}
+
+async function adminDashboard() {
+  const [members, subscriptions, payments, connections, operations] = await Promise.all([
+    sb("members?select=id,status,created_at"),
+    sb("subscriptions?select=id,member_id,status,expires_at,grace_ends_at,created_at"),
+    sb("payments?select=id,amount,status,paid_at,created_at"),
+    sb("whatsapp_connections?select=id,connection_status,last_connected_at,last_disconnected_at,last_error&order=updated_at.desc&limit=1"),
+    sb("access_operations?select=id,status,operation_type&operation_type=eq.remove&status=in.(queued,processing,retry_pending)"),
+  ]);
+  const now = Date.now();
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const active = subscriptions.filter((s) => s.status === "active").length;
+  const grace = subscriptions.filter((s) => s.status === "grace_period").length;
+  const expired = subscriptions.filter((s) => s.status === "expired" || (s.grace_ends_at && new Date(s.grace_ends_at).getTime() < now)).length;
+  const dueSoon = subscriptions.filter((s) => s.expires_at && new Date(s.expires_at).getTime() >= now && new Date(s.expires_at).getTime() <= now + 7 * 86400000).length;
+  const paid = payments.filter((p) => p.status === "paid");
+  const pending = payments.filter((p) => ["initiated","pending","under_review"].includes(p.status));
+  const revenue = paid.reduce((sum,p) => sum + Number(p.amount || 0), 0);
+  const revenueMonth = paid.filter((p) => p.paid_at && new Date(p.paid_at) >= monthStart).reduce((sum,p) => sum + Number(p.amount || 0), 0);
+  const connection = connections[0];
+  let waStatus = connection?.connection_status || "disconnected";
+  try { const live = await bridge("/status"); waStatus = live.state || waStatus; } catch { /* keep last persisted state */ }
+  const last30 = new Date(now - 30 * 86400000);
+  const seriesByMonth = (rows, field, filter = () => true) => {
+    const map = new Map();
+    for (const row of rows.filter(filter)) {
+      const key = String(row[field] || "").slice(0,7);
+      if (key) map.set(key, (map.get(key) || 0) + 1);
+    }
+    return [...map.entries()].sort().map(([period,value]) => ({period,value}));
+  };
+  return {
+    totals: {
+      members: members.length, active, grace_period: grace, expired,
+      new_signups: members.filter((m) => new Date(m.created_at) >= last30).length,
+      payments_confirmed: paid.length, payments_pending: pending.length,
+      revenue_total_kz: revenue, revenue_month_kz: revenueMonth, due_soon: dueSoon,
+      removals_pending: operations.length,
+    },
+    whatsapp: { status: waStatus === "connected" ? "connected" : waStatus === "error" ? "error" : "disconnected", adapter: "bider", last_seen_at: connection?.last_connected_at || null },
+    series: {
+      member_growth: seriesByMonth(members,"created_at"),
+      revenue_kz: seriesByMonth(paid,"paid_at").map((x) => ({...x,value: paid.filter((p) => String(p.paid_at || "").slice(0,7) === x.period).reduce((s,p) => s + Number(p.amount || 0),0)})),
+      payments: seriesByMonth(paid,"paid_at"),
+      renewals: seriesByMonth(subscriptions,"created_at",(s) => s.status === "active"),
+      expirations: seriesByMonth(subscriptions,"expires_at",(s) => s.status === "expired"),
+    },
+  };
+}
+
+async function adminMembers(event) {
+  const q = event.queryStringParameters || {};
+  const page = Math.max(1, Number(q.page || 1));
+  const perPage = 25;
+  const [members, subscriptions, memberships] = await Promise.all([
+    sb("members?select=id,full_name,phone,phone_e164,email,province,city,status,created_at&order=created_at.desc"),
+    sb("subscriptions?select=member_id,status,expires_at,grace_ends_at&order=created_at.desc"),
+    sb("group_memberships?select=member_id,status"),
+  ]);
+  const latestSub = new Map();
+  for (const s of subscriptions) if (!latestSub.has(s.member_id)) latestSub.set(s.member_id,s);
+  const access = new Map();
+  for (const m of memberships) if (m.status === "joined") access.set(m.member_id,"active");
+  let rows = members.map((m) => {
+    const sub = latestSub.get(m.id);
+    const due = sub?.expires_at || null;
+    return {
+      id: m.id, full_name: m.full_name, whatsapp: m.phone_e164 || m.phone, email: m.email,
+      province: m.province || "", city: m.city || "", registered_at: m.created_at,
+      subscription_status: sub?.status || null, due_at: due,
+      access_status: access.get(m.id) || "none",
+    };
+  });
+  if (q.search) {
+    const term = String(q.search).toLowerCase();
+    rows = rows.filter((m) => [m.full_name,m.whatsapp,m.email].some((v) => String(v || "").toLowerCase().includes(term)));
+  }
+  if (q.status && q.status !== "all") rows = rows.filter((m) => m.subscription_status === q.status);
+  if (q.from) rows = rows.filter((m) => m.registered_at >= q.from);
+  if (q.to) rows = rows.filter((m) => m.registered_at.slice(0,10) <= q.to);
+  const total = rows.length;
+  return { data: rows.slice((page-1)*perPage,page*perPage), meta: { current_page: page, last_page: Math.max(1,Math.ceil(total/perPage)), per_page: perPage, total } };
+}
+
+async function ensureConnection(communityId, status) {
+  const rows = await sb("whatsapp_connections?select=id&community_id=eq." + communityId + "&name=eq.Encontre%20%2B%20Principal&limit=1");
+  if (rows[0]) {
+    await sb("whatsapp_connections?id=eq." + rows[0].id, { method:"PATCH", body: JSON.stringify({connection_status:status,updated_at:iso(new Date())}), headers: { Prefer:"return=minimal" } });
+    return rows[0].id;
+  }
+  const created = await sb("whatsapp_connections", { method:"POST", body:JSON.stringify({community_id:communityId,name:"Encontre + Principal",provider:"baileys",connection_status:status}), headers:{Prefer:"return=representation"} });
+  return created[0].id;
+}
+
+async function syncWhatsApp(communityId) {
+  const groupsResult = await bridge("/groups");
+  const connectionId = await ensureConnection(communityId,"connected");
+  let groupsImported = 0, contactsImported = 0, skipped = 0;
+  for (const group of groupsResult.groups || []) {
+    const stored = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
+      method:"POST",
+      body:JSON.stringify([{community_id:communityId,whatsapp_connection_id:connectionId,external_group_id:group.id,name:group.subject || "Grupo WhatsApp",description:group.description || null,group_type:"subgroup",is_active:true,sync_status:"synced"}]),
+      headers:{Prefer:"resolution=merge-duplicates,return=representation"},
+    });
+    const dbGroup = stored[0];
+    groupsImported++;
+    const participants = await bridge("/groups/" + encodeURIComponent(group.id) + "/participants");
+    for (const participant of participants.participants || []) {
+      const jid = String(participant.id || "");
+      const phone = digits(jid.split("@")[0].split(":")[0]);
+      if (!/^\d{8,15}$/.test(phone)) { skipped++; continue; }
+      let existing = await sb("members?select=id&phone_e164=eq." + phone + "&limit=1");
+      let memberId = existing[0]?.id;
+      if (!memberId) {
+        const created = await sb("members", {method:"POST",body:JSON.stringify([{full_name:phone,phone,phone_e164:phone,status:"active",registration_source:"whatsapp_import",country:"Angola"}]),headers:{Prefer:"return=representation"}});
+        memberId = created[0].id;
+      }
+      await sb("group_memberships?on_conflict=member_id,whatsapp_group_id", {
+        method:"POST",
+        body:JSON.stringify([{member_id:memberId,whatsapp_group_id:dbGroup.id,external_participant_id:jid,status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date())}]),
+        headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
+      });
+      contactsImported++;
+    }
+  }
+  await ensureConnection(communityId,"connected");
+  return {groups_imported:groupsImported,contacts_imported:contactsImported,participants_skipped:skipped};
+}
+
+export default async (request) => {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  const method = request.method || "GET";
+  const url = new URL(request.url);
+  const q = Object.fromEntries(url.searchParams.entries());
+  const path = q.path || "/";
+  try {
+    if (path === "/health") return json(200,{status:"ok",time:iso(new Date())});
+    if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
+    if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
+
+    const publicRoute = path === "/public/registrations" && method === "POST";
+    const user = await requireSuperAdmin(request);
+    if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
+
+    if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
+    if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(event));
+    if (path === "/admin/whatsapp/status" && method === "GET") {
+      const status = await bridge("/status");
+      return json(200,status);
+    }
+    if (path === "/admin/whatsapp/groups" && method === "GET") {
+      const [groups,memberships,members] = await Promise.all([
+        sb("whatsapp_groups?select=id,name,description,external_group_id,group_type,sync_status,is_active,community_id&order=name.asc"),
+        sb("group_memberships?select=member_id,whatsapp_group_id,status,external_participant_id"),
+        sb("members?select=id,full_name,phone_e164,phone,email"),
+      ]);
+      return json(200,{data:groups.map((g)=>({
+        ...g,
+        participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").map((m)=>{
+          const person=members.find((p)=>p.id===m.member_id);
+          return person ? {id:person.id,name:person.full_name,phone:person.phone_e164 || person.phone,email:person.email,status:m.status} : null;
+        }).filter(Boolean),
+        participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
+      }))});
+    }
+    if (path === "/admin/whatsapp/connect" && method === "POST") return json(202,await bridge("/connect","POST",{}));
+    if (path === "/admin/whatsapp/qr" && method === "GET") return json(200,await bridge("/qr"));
+    if (path === "/admin/whatsapp/pairing-code" && method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const phone = digits(body.phone);
+      if (!/^\d{8,15}$/.test(phone)) return json(400,{message:"Introduza o número com indicativo do país."});
+      return json(200,await bridge("/pairing-code","POST",{phone}));
+    }
+    if (path === "/admin/whatsapp/disconnect" && method === "POST") return json(200,await bridge("/disconnect","POST",{}));
+    if (path === "/admin/whatsapp/sync" && method === "POST") {
+      const body = JSON.parse(event.body || "{}");
+      const communities = await sb("communities?select=id&status=eq.active&limit=1");
+      const communityId = isUuid(body.community_id) ? body.community_id : communities[0]?.id;
+      if (!communityId) return json(409,{message:"Crie uma comunidade ativa antes de sincronizar os grupos."});
+      const result = await syncWhatsApp(communityId);
+      return json(200,result);
+    }
+    if (path === "/public/registrations" && method === "POST") {
+      const body = JSON.parse(event.body || "{}");
+      const phone = digits(body.whatsapp);
+      if (!body.full_name || String(body.full_name).trim().length < 3 || !/^\d{8,15}$/.test(phone) || !isUuid(body.community_id) || !isUuid(body.subgroup_id)) {
+        return json(422,{message:"Dados da inscrição inválidos."});
+      }
+      const [community,group,plans] = await Promise.all([
+        sb("communities?select=id,status&id=eq."+body.community_id+"&status=eq.active"),
+        sb("whatsapp_groups?select=id,community_id,is_active&id=eq."+body.subgroup_id+"&is_active=eq.true"),
+        sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
+      ]);
+      if (!community.length || !group.length || group[0].community_id !== body.community_id || !plans.length) return json(422,{message:"Comunidade, subgrupo ou plano indisponível."});
+      const now = new Date();
+      const plan = plans[0];
+      if (Number(plan.initial_price) !== 0) return json(409,{message:"O plano ainda não está configurado para adesão gratuita."});
+      const expires = new Date(now.getTime()+Number(plan.duration_days)*86400000);
+      const grace = new Date(expires.getTime()+Number(plan.grace_days)*86400000);
+      const memberRows = await sb("members?on_conflict=phone_e164", {
+        method:"POST",
+        body:JSON.stringify([{full_name:String(body.full_name).trim(),phone,phone_e164:phone,email:body.email || null,province:body.province || null,city:body.city || null,country:"Angola",status:"active",registration_source:"web",terms_accepted_at:iso(now),privacy_consent_at:iso(now)}]),
+        headers:{Prefer:"resolution=merge-duplicates,return=representation"},
+      });
+      const member = memberRows[0];
+      const existing = await sb("subscriptions?select=id,status,expires_at&member_id=eq."+member.id+"&community_id=eq."+body.community_id+"&status=in.(pending,active,grace_period,suspended)&limit=1");
+      let subscriptionId = existing[0]?.id;
+      if (!subscriptionId) {
+        const createdSubscription = await sb("subscriptions",{method:"POST",body:JSON.stringify([{member_id:member.id,community_id:body.community_id,plan_id:plan.id,status:"active",starts_at:iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),activated_at:iso(now)}]),headers:{Prefer:"return=representation"}});
+        subscriptionId = createdSubscription[0].id;
+      }
+      const foundMembership = await sb("group_memberships?select=id,status&member_id=eq."+member.id+"&whatsapp_group_id=eq."+body.subgroup_id+"&limit=1");
+      let membership = foundMembership[0];
+      if (!membership) {
+        const inserted = await sb("group_memberships",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:body.subgroup_id,status:"pending_invitation"}]),headers:{Prefer:"return=representation"}});
+        membership = inserted[0];
+      }
+      if (membership.status !== "joined") {
+        try {
+          const waStatus = await bridge("/status");
+          if (waStatus.connected) {
+            await bridge("/groups/"+encodeURIComponent(group[0].id)+"/participants/add","POST",{phone});
+            await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",joined_at:iso(new Date()),last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+          }
+        } catch {
+          // Keep access pending until the WhatsApp connection and group permissions are available.
+        }
+      }
+      return json(201,{reference:subscriptionId,status:"approved",payment:{reference:subscriptionId,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+    }
+    if (path.startsWith("/public/registrations/") && method === "GET") {
+      const reference = path.slice("/public/registrations/".length);
+      const phone = digits(q.whatsapp);
+      if (!isUuid(reference) || !/^\\d{8,15}$/.test(phone)) return json(404,{message:"Inscrição não encontrada."});
+      const subs = await sb("subscriptions?select=id,member_id,community_id,status,expires_at,created_at&id=eq."+reference+"&limit=1");
+      const sub = subs[0];
+      if (!sub) return json(404,{message:"Inscrição não encontrada."});
+      const [members,communities,groups,memberships] = await Promise.all([
+        sb("members?select=id,full_name,phone_e164,phone,created_at&id=eq."+sub.member_id+"&limit=1"),
+        sb("communities?select=id,name,slug&id=eq."+sub.community_id+"&limit=1"),
+        sb("whatsapp_groups?select=id,name,invite_link&community_id=eq."+sub.community_id),
+        sb("group_memberships?select=whatsapp_group_id,status&member_id=eq."+sub.member_id),
+      ]);
+      const member = members[0], community = communities[0];
+      if (!member || digits(member.phone_e164 || member.phone) !== phone || !community) return json(404,{message:"Inscrição não encontrada."});
+      const membership = memberships.find((m)=>m.status==="joined");
+      const subgroup = groups.find((g)=>g.id===membership?.whatsapp_group_id) || groups[0];
+      const accessActive = Boolean(membership);
+      return json(200,{
+        reference:sub.id,status:"approved",full_name:member.full_name,created_at:sub.created_at,
+        community:{name:community.name,slug:community.slug},
+        subgroup:{name:subgroup?.name || "Subgrupo",slug:subgroup?.id || ""},
+        payment:{reference:sub.id,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null},
+        subscription:{status:sub.status,due_at:sub.expires_at},
+        access:{community:accessActive?"active":"pending",subgroup:accessActive?"active":"pending",community_invite_url:null,subgroup_invite_url:subgroup?.invite_link || null},
+        rejection_reason:null,
+      });
+    }
+    return json(404,{message:"Endpoint não encontrado."});
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return json(status,{message:error.message || "Erro interno.",code:"integration_error"});
+  }
+};
