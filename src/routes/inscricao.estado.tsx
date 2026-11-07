@@ -76,6 +76,7 @@ function EstadoPage() {
     ...registrationStatusQuery(lookup?.reference ?? "", lookup?.whatsapp ?? ""),
     enabled: configured && lookup !== null,
   });
+  const data = query.data;
   const renewal = useMutation({
     mutationFn: () => apiRequest("/public/registrations/" + encodeURIComponent(data?.reference || "") + "/renewal", {
       method: "POST", body: { whatsapp: lookup?.whatsapp }, auth: false,
@@ -93,7 +94,6 @@ function EstadoPage() {
     setLookup({ reference: ref, whatsapp: wa });
   }
 
-  const data = query.data;
   const notFound = query.error instanceof ApiError && query.error.status === 404;
 
   return (
