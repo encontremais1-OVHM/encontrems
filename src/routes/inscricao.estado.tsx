@@ -190,7 +190,7 @@ function EstadoPage() {
               )}
             </section>
 
-            <WhatsAppAccess links={inviteLinks(data)} />
+            <WhatsAppAccess links={inviteLinks(data)} subgroupNames={data.subgroups?.map((group) => group.name) || []} />
 
             {data.subscription?.due_at && Date.now() >= new Date(data.subscription.due_at).getTime() - 7 * 86400000 && data.payment?.status !== "pending" && data.status === "approved" && (
               <section className="rounded-2xl border bg-card p-5 shadow-card">
@@ -226,31 +226,30 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ links }: { links: { community: string | null; subgroup: string | null; subgroups:Array<{id:string;name:string;url:string}> } }) {
-  if (!links.community && links.subgroups.length===0) return null;
+function WhatsAppAccess({ links, subgroupNames }: {
+  links: { community: string | null; subgroup: string | null; subgroups:Array<{id:string;name:string;url:string}> };
+  subgroupNames: string[];
+}) {
+  if (!links.community) return null;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
       <p className="flex items-center gap-2 font-display text-lg font-extrabold text-foreground">
-        <MessageCircle className="size-5 text-success" /> Acesso autorizado
+        <MessageCircle className="size-5 text-success" /> Convite para a Comunidade WhatsApp
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Abra o WhatsApp para concluir a entrada. Não partilhe os convites fora da comunidade.
+        Entre primeiro na Comunidade. Depois, dentro do WhatsApp, abra a lista de grupos e escolha os subgrupos em que pretende participar.
       </p>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        {links.community && (
-          <Button asChild>
-            <a href={links.community} target="_blank" rel="noopener noreferrer">
-              Entrar na comunidade
-            </a>
-          </Button>
-        )}
-        {links.subgroups.map((group) => (
-          <Button key={group.id} asChild variant="outline">
-            <a href={group.url} target="_blank" rel="noopener noreferrer">
-              Entrar em {group.name}
-            </a>
-          </Button>
-        ))}
+      {subgroupNames.length > 0 && (
+        <p className="mt-3 text-sm text-foreground">
+          Subgrupos indicados na inscrição: <span className="font-semibold">{subgroupNames.join(", ")}</span>.
+        </p>
+      )}
+      <div className="mt-4">
+        <Button asChild>
+          <a href={links.community} target="_blank" rel="noopener noreferrer">
+            Abrir WhatsApp e entrar na Comunidade
+          </a>
+        </Button>
       </div>
     </section>
   );

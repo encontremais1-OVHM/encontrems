@@ -137,10 +137,6 @@ function Home() {
                 </Button>
               </div>
 
-              <p className="mt-6 text-sm text-muted-foreground">
-                Entrada gratuita com <span className="font-bold text-foreground tabular">{plan.durationDays} dias de acesso.</span> Depois, renovação de{" "}
-                <span className="font-bold text-foreground tabular">{formatKz(plan.renewalPriceKz)}</span> a cada {plan.durationDays} dias.
-              </p>
             </div>
 
             <HeroColumns className="h-[360px] sm:h-[480px] lg:h-[600px]" />

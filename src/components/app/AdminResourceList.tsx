@@ -11,13 +11,38 @@ import { formatDate, formatKz } from "@/lib/format";
 type Row = Record<string, unknown>;
 type Column = { key: string; label: string };
 
+const STATUS_LABELS: Record<string, string> = {
+  joined: "Entrada confirmada",
+  pending_invitation: "Convite enviado — entrada pendente",
+  pending: "Pendente",
+  active: "Ativa",
+  grace_period: "Em período de tolerância",
+  expired: "Expirada",
+  suspended: "Suspensa",
+  cancelled: "Cancelada",
+  failed: "Falhou",
+  invalid: "Inválido",
+  removed: "Removido",
+  removal_pending: "Remoção pendente",
+};
+
 function displayValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
+  if (key === "selected_subgroups" && Array.isArray(value)) {
+    return value.map((item) => {
+      if (!item || typeof item !== "object") return String(item);
+      const subgroup = item as { name?: string; status?: string };
+      return `${subgroup.name || "Subgrupo"} — ${STATUS_LABELS[subgroup.status || ""] || subgroup.status || "Estado desconhecido"}`;
+    }).join(" · ");
+  }
+  if (key === "community_access" && value === "joined") return "Entrada confirmada na Comunidade";
+  if (key === "community_access" && value === "pending") return "A aguardar entrada na Comunidade";
   if (typeof value === "number" && (key.includes("price") || key.includes("amount") || key.endsWith("_kz"))) return formatKz(value);
   if (typeof value === "string" && (key.endsWith("_at") || key === "created_at" || key === "expires_at")) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : formatDate(value, true);
   }
+  if (typeof value === "string" && STATUS_LABELS[value]) return STATUS_LABELS[value];
   if (typeof value === "object") {
     const serialized = JSON.stringify(value);
     return serialized.length > 160 ? serialized.slice(0,157) + "…" : serialized;
