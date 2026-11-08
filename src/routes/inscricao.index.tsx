@@ -551,50 +551,41 @@ function Receipt({
       {receipt.access && (
         <section className="space-y-3 rounded-2xl border bg-card p-5">
           <div>
-            <h2 className="font-bold text-foreground">Acesso aos grupos WhatsApp</h2>
-            <p className="mt-1 text-sm text-muted-foreground">A inscrição fica guardada na Encontre +. Cada entrada é confirmada separadamente.</p>
+            <h2 className="font-bold text-foreground">Entre primeiro na Comunidade WhatsApp</h2>
+            <p className="mt-1 text-sm text-muted-foreground">A sua inscrição está guardada. Abra o convite da Comunidade e, depois de entrar, escolha no próprio WhatsApp os subgrupos em que pretende participar.</p>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-3 text-sm">
             <span className="font-medium text-foreground">{communityName} · Comunidade principal</span>
-            <span className={receipt.access.community === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{receipt.access.community === "joined" ? "Adicionado ao grupo" : "A aguardar acesso"}</span>
+            <span className={receipt.access.community === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{receipt.access.community === "joined" ? "Entrada confirmada" : "Convite disponível — entrada pendente"}</span>
           </div>
-          {receipt.access.community === "pending_invitation" && receipt.access.community_invite_url && (
-            <a className="inline-flex text-sm font-semibold text-primary underline underline-offset-4" href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Entrar na comunidade principal</a>
-          )}
-          {receipt.access.subgroups.map((group) => (
-            <div key={group.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm">
-              <span className="font-medium text-foreground">{group.name}</span>
-              <span className={group.status === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{group.status === "joined" ? "Adicionado" : "A aguardar acesso"}</span>
-              {group.status !== "joined" && group.invite_url && <a className="w-full font-semibold text-primary underline underline-offset-4" href={group.invite_url} target="_blank" rel="noopener noreferrer">Entrar neste subgrupo</a>}
+          {receipt.access.subgroups.length > 0 && (
+            <div className="rounded-lg border px-3 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Subgrupos indicados na inscrição</p>
+              <ul className="mt-2 space-y-1 text-sm text-foreground">
+                {receipt.access.subgroups.map((group) => (
+                  <li key={group.id} className="flex items-center justify-between gap-3">
+                    <span>{group.name}</span>
+                    <span className={group.status === "joined" ? "text-xs font-semibold text-success" : "text-xs text-muted-foreground"}>{group.status === "joined" ? "Entrada confirmada" : "Escolha dentro da Comunidade"}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          ))}
-          {(receipt.access.community === "pending_invitation" || receipt.access.subgroups.some((group) => group.status !== "joined")) && (
-            <p className="text-xs text-muted-foreground">Guarde o número da inscrição. Se algum acesso continuar pendente, a equipa poderá verificar o estado no painel administrativo.</p>
           )}
+          {receipt.access.community_invite_url ? (
+            <Button asChild>
+              <a href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Abrir WhatsApp e entrar na Comunidade</a>
+            </Button>
+          ) : (
+            <p className="text-sm text-amber-700">O convite da Comunidade ainda não está disponível. Guarde o número da inscrição e contacte a equipa Encontre +.</p>
+          )}
+          <p className="text-xs text-muted-foreground">Guarde o número da inscrição para consultar o estado. A confirmação dos grupos é actualizada quando a participação é detectada no WhatsApp.</p>
         </section>
       )}
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
       <p className="text-sm text-muted-foreground">
-        A adesão é gratuita durante 30 dias. Se a conta WhatsApp da comunidade estiver ligada e tiver permissões de administradora, a entrada será processada automaticamente. Caso contrário, pode usar os convites abaixo quando estiverem disponíveis.
+        A adesão inicial é gratuita durante 30 dias. Depois de entrar na Comunidade WhatsApp, poderá escolher os subgrupos disponíveis directamente dentro dela.
       </p>
-      {(receipt.access?.community_invite_url || receipt.access?.subgroup_invite_url || receipt.access?.subgroup_invite_urls?.length) && (
-        <div className="flex flex-wrap gap-3">
-          {receipt.access?.community_invite_url && (
-            <Button asChild>
-              <a href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Entrar na comunidade WhatsApp</a>
-            </Button>
-          )}
-          {(receipt.access?.subgroup_invite_urls?.length
-            ? receipt.access.subgroup_invite_urls
-            : receipt.access?.subgroup_invite_url ? [{id:"subgroup",name:"Subgrupo",url:receipt.access.subgroup_invite_url}] : []
-          ).map((group) => (
-            <Button key={group.id} asChild variant="outline">
-              <a href={group.url} target="_blank" rel="noopener noreferrer">Entrar em {group.name}</a>
-            </Button>
-          ))}
-        </div>
-      )}
       <Button variant="outline" asChild>
         <Link to="/inscricao/estado" search={{ ref: receipt.reference }}>
           Consultar estado da inscrição <ArrowRight />
