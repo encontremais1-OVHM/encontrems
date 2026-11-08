@@ -36,7 +36,7 @@ async function bridge(path, body) {
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
   const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
-  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000)).slice(0, 3);
+  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000)).slice(0, 2);
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
   try { connected = (await bridge("/status")).connected === true; } catch { /* queued additions remain pending */ }
