@@ -185,7 +185,9 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
     groupsChecked++;
     const { group, participants } = result;
     for (const participant of participants) {
-      const jid = String(participant.id || "");
+      // Baileys 6.7.x can expose a LID as participant.id and the
+      // corresponding phone-number JID separately as participant.jid.
+      const jid = String(participant.jid || participant.id || "");
       const phone = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
       if (!phone) continue; // WhatsApp LID identifiers cannot safely be mapped to a phone.
       const member = memberByPhone.get(phone);
