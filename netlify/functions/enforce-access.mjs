@@ -119,7 +119,7 @@ async function processPendingAdditions(now, nowIso) {
       succeeded++;
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp addition failed";
-      const terminal = attempt >= 8;
+      const permanentPermissionFailure = /bot_must_be_(community|group)_admin|forbidden/i.test(message);\n      const terminal = attempt >= 8 || permanentPermissionFailure;
       const retryMinutes = Math.min(60, 5 * (2 ** Math.max(0, attempt - 1)));
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
@@ -133,6 +133,74 @@ async function processPendingAdditions(now, nowIso) {
 }
 
 
+async function syncConfirmedWhatsAppParticipants(nowIso) {
+  let connected = false;
+  try { connected = (await bridge("/status")).connected === true; } catch { /* WhatsApp may be offline */ }
+  if (!connected) return { groups_checked: 0, memberships_confirmed: 0 };
+
+  const [groups, members, subscriptions, memberships] = await Promise.all([
+    db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&limit=100"),
+    db("members?select=id,phone,phone_e164&registration_source=eq.web&limit=1000"),
+    db("subscriptions?select=id,member_id,community_id,status,grace_ends_at&status=in.(active,grace_period)&limit=1000"),
+    db("group_memberships?select=id,member_id,whatsapp_group_id,status"),
+  ]);
+  const memberByPhone = new Map();
+  for (const member of members) {
+    const phone = String(member.phone_e164 || member.phone || "").replace(/\\D/g, "");
+    if (phone) memberByPhone.set(phone, member);
+  }
+  const subscriptionByMemberCommunity = new Map();
+  for (const subscription of subscriptions) {
+    const graceEnd = subscription.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : Number.POSITIVE_INFINITY;
+    if (graceEnd >= Date.now()) subscriptionByMemberCommunity.set(subscription.member_id + ":" + subscription.community_id, subscription);
+  }
+  const membershipByKey = new Map(memberships.map((membership) => [membership.member_id + ":" + membership.whatsapp_group_id, membership]));
+  let membershipsConfirmed = 0;
+  let groupsChecked = 0;
+
+  for (const group of groups) {
+    if (!group.external_group_id) continue;
+    const endpoint = group.group_type === "community"
+      ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants"
+      : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants";
+    try {
+      const result = await bridge(endpoint);
+      groupsChecked++;
+      for (const participant of result.participants || []) {
+        const jid = String(participant.id || "");
+        const phone = jid.split("@")[0].split(":")[0].replace(/\\D/g, "");
+        if (!phone) continue; // WhatsApp LID identifiers cannot safely be mapped to a phone.
+        const member = memberByPhone.get(phone);
+        if (!member || !subscriptionByMemberCommunity.has(member.id + ":" + group.community_id)) continue;
+        const key = member.id + ":" + group.id;
+        const existing = membershipByKey.get(key);
+        if (existing?.status === "joined") continue;
+        const joinedAt = nowIso;
+        const row = {
+          member_id: member.id,
+          whatsapp_group_id: group.id,
+          external_participant_id: phone + "@s.whatsapp.net",
+          status: "joined",
+          joined_at: existing?.joined_at || joinedAt,
+          removed_at: null,
+          last_synced_at: nowIso,
+          updated_at: nowIso,
+        };
+        await db("group_memberships?on_conflict=member_id,whatsapp_group_id", {
+          method: "POST",
+          body: JSON.stringify([row]),
+          headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        });
+        membershipByKey.set(key, { ...existing, ...row });
+        membershipsConfirmed++;
+      }
+    } catch (error) {
+      console.warn("WhatsApp participant sync skipped for one group:", error instanceof Error ? error.message : "unknown");
+    }
+  }
+  return { groups_checked: groupsChecked, memberships_confirmed: membershipsConfirmed };
+}
+
 export default async (_request) => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     console.error("Expiry worker missing Supabase server configuration.");
@@ -141,12 +209,12 @@ export default async (_request) => {
 
   const now = new Date();
   const nowIso = iso(now);
-  const additions = await processPendingAdditions(now, nowIso);
+  const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);\n  const additions = await processPendingAdditions(now, nowIso);
   const expired = await db(
     "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
   );
 
-  if (!expired.length) return Response.json({ ok: true, additions_succeeded: additions.succeeded, additions_pending: additions.pending, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
+  if (!expired.length) return Response.json({ ok: true, participant_sync_groups: participantSync.groups_checked, memberships_confirmed: participantSync.memberships_confirmed, additions_succeeded: additions.succeeded, additions_pending: additions.pending, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
 
   let removalsSucceeded = 0;
   let removalsPending = 0;
@@ -273,7 +341,7 @@ export default async (_request) => {
 
   return Response.json({
     ok: true,
-    subscriptions_checked: expired.length,
+    participant_sync_groups: participantSync.groups_checked,\n    memberships_confirmed: participantSync.memberships_confirmed,\n    subscriptions_checked: expired.length,
     removals_succeeded: removalsSucceeded,
     additions_succeeded: additions.succeeded,
     additions_pending: additions.pending,
