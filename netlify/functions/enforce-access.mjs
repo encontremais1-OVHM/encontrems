@@ -247,14 +247,15 @@ export default async (_request) => {
     // A previous expired subscription must never revoke access granted by a newer
     // valid subscription for the same member and community.
     const latestSubscriptions = await db(
-      "subscriptions?select=id,status,grace_ends_at&member_id=eq." + subscription.member_id +
+      "subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq." + subscription.member_id +
       "&community_id=eq." + subscription.community_id + "&order=created_at.desc&limit=1",
     );
     const latestSubscription = latestSubscriptions[0];
+    const latestAccessEnd = latestSubscription?.grace_ends_at || latestSubscription?.expires_at;
     const latestStillAuthorizesAccess = latestSubscription &&
       ["active", "grace_period"].includes(latestSubscription.status) &&
-      latestSubscription.grace_ends_at &&
-      new Date(latestSubscription.grace_ends_at).getTime() >= now.getTime();
+      latestAccessEnd &&
+      new Date(latestAccessEnd).getTime() >= now.getTime();
     if (latestSubscription?.id !== subscription.id && latestStillAuthorizesAccess) {
       continue;
     }
@@ -269,7 +270,7 @@ export default async (_request) => {
 
     for (const membership of memberships) {
       const idempotencyKey = `expiry-remove:${subscription.id}:${membership.whatsapp_group_id}`;
-      const existingOps = await db("access_operations?select=id,status,attempts&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
+      const existingOps = await db("access_operations?select=id,status,attempts,next_retry_at,updated_at&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
       let operation = existingOps[0];
 
       if (operation?.status === "succeeded") {
