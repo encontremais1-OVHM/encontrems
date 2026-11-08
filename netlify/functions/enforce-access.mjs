@@ -244,6 +244,22 @@ export default async (_request) => {
   }
 
   for (const subscription of expired) {
+    // A previous expired subscription must never revoke access granted by a newer
+    // valid subscription for the same member and community.
+    const latestSubscriptions = await db(
+      "subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq." + subscription.member_id +
+      "&community_id=eq." + subscription.community_id + "&order=created_at.desc&limit=1",
+    );
+    const latestSubscription = latestSubscriptions[0];
+    const latestAccessEnd = latestSubscription?.grace_ends_at || latestSubscription?.expires_at;
+    const latestStillAuthorizesAccess = latestSubscription &&
+      ["active", "grace_period"].includes(latestSubscription.status) &&
+      latestAccessEnd &&
+      new Date(latestAccessEnd).getTime() >= now.getTime();
+    if (latestSubscription?.id !== subscription.id && latestStillAuthorizesAccess) {
+      continue;
+    }
+
     const communityGroups = await db("whatsapp_groups?select=id&community_id=eq." + subscription.community_id);
     const communityGroupIds = communityGroups.map((group) => group.id);
     if (!communityGroupIds.length) continue;
@@ -253,8 +269,8 @@ export default async (_request) => {
     );
 
     for (const membership of memberships) {
-      const idempotencyKey = `expiry-remove:${subscription.id}:${membership.whatsapp_group_id}`;
-      const existingOps = await db("access_operations?select=id,status,attempts&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
+      const idempotencyKey = `expiry-remove:${latestSubscription?.id || subscription.id}:${membership.whatsapp_group_id}`;
+      const existingOps = await db("access_operations?select=id,status,attempts,next_retry_at,updated_at&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
       let operation = existingOps[0];
 
       if (operation?.status === "succeeded") {
@@ -290,11 +306,30 @@ export default async (_request) => {
         });
       }
       if (!operation) continue;
+
+      // Honour the retry schedule and avoid overlapping a still-running removal.
+      if (operation.status === "failed") {
+        removalsPending++;
+        continue;
+      }
+      if (operation.status === "retry_pending" && operation.next_retry_at &&
+          new Date(operation.next_retry_at).getTime() > now.getTime()) {
+        removalsPending++;
+        continue;
+      }
+      if (operation.status === "processing" && operation.updated_at &&
+          now.getTime() - new Date(operation.updated_at).getTime() < 15 * 60 * 1000) {
+        removalsPending++;
+        continue;
+      }
+
+      const attempt = Number(operation.attempts || 0) + 1;
+      const retryMinutes = Math.min(12 * 60, 15 * (2 ** Math.min(attempt - 1, 6)));
       if (!bridgeConnected || !membership.external_participant_id) {
         const message = !bridgeConnected ? "WhatsApp desconectado; remoção aguarda reconexão." : "Identificador do participante não disponível.";
         await db("access_operations?id=eq." + operation.id, {
           method: "PATCH",
-          body: JSON.stringify({ status: "retry_pending", attempts: Number(operation.attempts || 0) + 1, last_error: message, next_retry_at: iso(new Date(now.getTime() + 60 * 60 * 1000)), updated_at: nowIso }),
+          body: JSON.stringify({ status: "retry_pending", attempts: attempt, last_error: message, next_retry_at: iso(new Date(now.getTime() + retryMinutes * 60 * 1000)), updated_at: nowIso }),
           headers: { Prefer: "return=minimal" },
         });
         removalsPending++;
@@ -303,7 +338,7 @@ export default async (_request) => {
 
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "processing", attempts: Number(operation.attempts || 0) + 1, updated_at: nowIso }),
+        body: JSON.stringify({ status: "processing", attempts: attempt, next_retry_at: null, updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       try {
@@ -326,9 +361,11 @@ export default async (_request) => {
         removalsSucceeded++;
       } catch (error) {
         const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp removal failed";
+        const permissionFailure = /bot_must_be_(community|group)_admin|forbidden/i.test(message);
+        const retryDelay = permissionFailure ? 12 * 60 : retryMinutes;
         await db("access_operations?id=eq." + operation.id, {
           method: "PATCH",
-          body: JSON.stringify({ status: "retry_pending", last_error: message, next_retry_at: iso(new Date(now.getTime() + 6 * 60 * 60 * 1000)), updated_at: nowIso }),
+          body: JSON.stringify({ status: "retry_pending", attempts: attempt, last_error: message, next_retry_at: iso(new Date(now.getTime() + retryDelay * 60 * 1000)), updated_at: nowIso }),
           headers: { Prefer: "return=minimal" },
         });
         removalsPending++;
