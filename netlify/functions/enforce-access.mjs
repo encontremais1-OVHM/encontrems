@@ -142,7 +142,7 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   const [allGroups, members, subscriptions, memberships] = await Promise.all([
     db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&order=id.asc&limit=1000"),
     db("members?select=id,phone,phone_e164&registration_source=eq.web&limit=1000"),
-    db("subscriptions?select=id,member_id,community_id,status,grace_ends_at&status=in.(active,grace_period)&limit=1000"),
+    db("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period)&limit=1000"),
     db("group_memberships?select=id,member_id,whatsapp_group_id,status"),
   ]);
 
@@ -160,8 +160,9 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   }
   const subscriptionByMemberCommunity = new Map();
   for (const subscription of subscriptions) {
-    const graceEnd = subscription.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : Number.POSITIVE_INFINITY;
-    if (graceEnd >= Date.now()) subscriptionByMemberCommunity.set(subscription.member_id + ":" + subscription.community_id, subscription);
+    const accessEnd = subscription.grace_ends_at || subscription.expires_at;
+    const accessEndTime = accessEnd ? new Date(accessEnd).getTime() : Number.POSITIVE_INFINITY;
+    if (accessEndTime >= Date.now()) subscriptionByMemberCommunity.set(subscription.member_id + ":" + subscription.community_id, subscription);
   }
   const membershipByKey = new Map(memberships.map((membership) => [membership.member_id + ":" + membership.whatsapp_group_id, membership]));
   const groupResults = await Promise.all(groups.filter((group) => group.external_group_id).map(async (group) => {
