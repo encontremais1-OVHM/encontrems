@@ -398,7 +398,6 @@ async function adminMembers(q) {
   ]);
   const latestSub = new Map();
   for (const s of subscriptions) if (!latestSub.has(s.member_id)) latestSub.set(s.member_id,s);
-  const groupsById = new Map(groups.map((group) => [group.id, group]));
   const membershipsByMember = new Map();
   for (const membership of memberships) {
     const list = membershipsByMember.get(membership.member_id) || [];
