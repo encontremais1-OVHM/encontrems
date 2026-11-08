@@ -36,7 +36,7 @@ async function bridge(path, body) {
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
   const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
-  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000));
+  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000)).slice(0, 3);
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
   try { connected = (await bridge("/status")).connected === true; } catch { /* queued additions remain pending */ }
@@ -139,12 +139,20 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   try { connected = (await bridge("/status")).connected === true; } catch { /* WhatsApp may be offline */ }
   if (!connected) return { groups_checked: 0, memberships_confirmed: 0 };
 
-  const [groups, members, subscriptions, memberships] = await Promise.all([
-    db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&limit=100"),
+  const [allGroups, members, subscriptions, memberships] = await Promise.all([
+    db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&order=id.asc&limit=1000"),
     db("members?select=id,phone,phone_e164&registration_source=eq.web&limit=1000"),
     db("subscriptions?select=id,member_id,community_id,status,grace_ends_at&status=in.(active,grace_period)&limit=1000"),
     db("group_memberships?select=id,member_id,whatsapp_group_id,status"),
   ]);
+
+  // Keep the scheduled function below Netlify's 30-second execution limit:
+  // inspect at most 20 WhatsApp groups per run, rotating batches every 15 minutes.
+  const batchSize = 20;
+  const batchCount = Math.max(1, Math.ceil(allGroups.length / batchSize));
+  const batchIndex = Math.floor(Date.now() / (15 * 60 * 1000)) % batchCount;
+  const groups = allGroups.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+
   const memberByPhone = new Map();
   for (const member of members) {
     const phone = String(member.phone_e164 || member.phone || "").replace(/\D/g, "");
@@ -156,50 +164,56 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
     if (graceEnd >= Date.now()) subscriptionByMemberCommunity.set(subscription.member_id + ":" + subscription.community_id, subscription);
   }
   const membershipByKey = new Map(memberships.map((membership) => [membership.member_id + ":" + membership.whatsapp_group_id, membership]));
-  let membershipsConfirmed = 0;
-  let groupsChecked = 0;
-
-  for (const group of groups) {
-    if (!group.external_group_id) continue;
+  const groupResults = await Promise.all(groups.filter((group) => group.external_group_id).map(async (group) => {
     const endpoint = group.group_type === "community"
       ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants"
       : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants";
     try {
       const result = await bridge(endpoint);
-      groupsChecked++;
-      for (const participant of result.participants || []) {
-        const jid = String(participant.id || "");
-        const phone = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
-        if (!phone) continue; // WhatsApp LID identifiers cannot safely be mapped to a phone.
-        const member = memberByPhone.get(phone);
-        if (!member || !subscriptionByMemberCommunity.has(member.id + ":" + group.community_id)) continue;
-        const key = member.id + ":" + group.id;
-        const existing = membershipByKey.get(key);
-        if (existing?.status === "joined") continue;
-        const joinedAt = nowIso;
-        const row = {
-          member_id: member.id,
-          whatsapp_group_id: group.id,
-          external_participant_id: phone + "@s.whatsapp.net",
-          status: "joined",
-          joined_at: existing?.joined_at || joinedAt,
-          removed_at: null,
-          last_synced_at: nowIso,
-          updated_at: nowIso,
-        };
-        await db("group_memberships?on_conflict=member_id,whatsapp_group_id", {
-          method: "POST",
-          body: JSON.stringify([row]),
-          headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        });
-        membershipByKey.set(key, { ...existing, ...row });
-        membershipsConfirmed++;
-      }
+      return { group, participants: result.participants || [] };
     } catch (error) {
       console.warn("WhatsApp participant sync skipped for one group:", error instanceof Error ? error.message : "unknown");
+      return null;
+    }
+  }));
+
+  const rowsToConfirm = [];
+  let groupsChecked = 0;
+  for (const result of groupResults) {
+    if (!result) continue;
+    groupsChecked++;
+    const { group, participants } = result;
+    for (const participant of participants) {
+      const jid = String(participant.id || "");
+      const phone = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
+      if (!phone) continue; // WhatsApp LID identifiers cannot safely be mapped to a phone.
+      const member = memberByPhone.get(phone);
+      if (!member || !subscriptionByMemberCommunity.has(member.id + ":" + group.community_id)) continue;
+      const key = member.id + ":" + group.id;
+      const existing = membershipByKey.get(key);
+      if (existing?.status === "joined") continue;
+      rowsToConfirm.push({
+        member_id: member.id,
+        whatsapp_group_id: group.id,
+        external_participant_id: phone + "@s.whatsapp.net",
+        status: "joined",
+        joined_at: nowIso,
+        removed_at: null,
+        last_synced_at: nowIso,
+        updated_at: nowIso,
+      });
+      membershipByKey.set(key, { ...existing, status: "joined" });
     }
   }
-  return { groups_checked: groupsChecked, memberships_confirmed: membershipsConfirmed };
+
+  for (let index = 0; index < rowsToConfirm.length; index += 100) {
+    await db("group_memberships?on_conflict=member_id,whatsapp_group_id", {
+      method: "POST",
+      body: JSON.stringify(rowsToConfirm.slice(index, index + 100)),
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    });
+  }
+  return { groups_checked: groupsChecked, memberships_confirmed: rowsToConfirm.length };
 }
 
 export default async (_request) => {
