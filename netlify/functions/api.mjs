@@ -389,23 +389,47 @@ async function adminDashboard() {
 async function adminMembers(q) {
   const page = Math.max(1, Number(q.page || 1));
   const perPage = 25;
-  const [members, subscriptions, memberships] = await Promise.all([
+  const [members, subscriptions, memberships, groups, operations] = await Promise.all([
     sb("members?select=id,full_name,phone,phone_e164,email,province,city,status,created_at&order=created_at.desc"),
-    sb("subscriptions?select=member_id,status,expires_at,grace_ends_at&order=created_at.desc"),
-    sb("group_memberships?select=member_id,status"),
+    sb("subscriptions?select=member_id,community_id,status,expires_at,grace_ends_at&order=created_at.desc"),
+    sb("group_memberships?select=member_id,whatsapp_group_id,status"),
+    sb("whatsapp_groups?select=id,community_id,group_type,is_active"),
+    sb("access_operations?select=member_id,whatsapp_group_id,operation_type,status"),
   ]);
   const latestSub = new Map();
   for (const s of subscriptions) if (!latestSub.has(s.member_id)) latestSub.set(s.member_id,s);
-  const access = new Map();
-  for (const m of memberships) if (m.status === "joined") access.set(m.member_id,"active");
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+  const membershipsByMember = new Map();
+  for (const membership of memberships) {
+    const list = membershipsByMember.get(membership.member_id) || [];
+    list.push(membership);
+    membershipsByMember.set(membership.member_id, list);
+  }
   let rows = members.map((m) => {
     const sub = latestSub.get(m.id);
     const due = sub?.expires_at || null;
+    const communityGroup = groups.find((group) => group.community_id === sub?.community_id && group.group_type === "community" && group.is_active);
+    const communityMembership = communityGroup
+      ? (membershipsByMember.get(m.id) || []).find((membership) => membership.whatsapp_group_id === communityGroup.id)
+      : null;
+    const communityOperationFailed = communityGroup && operations.some((operation) =>
+      operation.member_id === m.id &&
+      operation.whatsapp_group_id === communityGroup.id &&
+      operation.operation_type === "add" &&
+      operation.status === "failed"
+    );
+    let accessStatus = "none";
+    if (communityMembership?.status === "joined") accessStatus = "active";
+    else if (communityMembership?.status === "pending_invitation") accessStatus = "pending";
+    else if (communityMembership?.status === "removal_pending") accessStatus = "removal_pending";
+    else if (communityMembership?.status === "removed") accessStatus = "removed";
+    else if (communityOperationFailed) accessStatus = "failed";
     return {
       id: m.id, full_name: m.full_name, whatsapp: m.phone_e164 || m.phone, email: m.email,
       province: m.province || "", city: m.city || "", registered_at: m.created_at,
-      subscription_status: !sub ? null : (sub.grace_ends_at && new Date(sub.grace_ends_at).getTime() < Date.now() ? "expired" : (sub.expires_at && new Date(sub.expires_at).getTime() <= Date.now() ? "grace_period" : sub.status)), due_at: due,
-      access_status: access.get(m.id) || "none",
+      subscription_status: !sub ? null : (sub.grace_ends_at && new Date(sub.grace_ends_at).getTime() < Date.now() ? "expired" : (sub.expires_at && new Date(sub.expires_at).getTime() <= Date.now() ? "grace_period" : sub.status)),
+      due_at: due,
+      access_status: accessStatus,
     };
   });
   if (q.search) {
