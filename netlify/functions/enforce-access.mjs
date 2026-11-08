@@ -269,7 +269,7 @@ export default async (_request) => {
     );
 
     for (const membership of memberships) {
-      const idempotencyKey = `expiry-remove:${subscription.id}:${membership.whatsapp_group_id}`;
+      const idempotencyKey = `expiry-remove:${latestSubscription?.id || subscription.id}:${membership.whatsapp_group_id}`;
       const existingOps = await db("access_operations?select=id,status,attempts,next_retry_at,updated_at&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
       let operation = existingOps[0];
 
