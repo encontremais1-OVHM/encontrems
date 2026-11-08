@@ -119,7 +119,8 @@ async function processPendingAdditions(now, nowIso) {
       succeeded++;
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp addition failed";
-      const permanentPermissionFailure = /bot_must_be_(community|group)_admin|forbidden/i.test(message);\n      const terminal = attempt >= 8 || permanentPermissionFailure;
+      const permanentPermissionFailure = /bot_must_be_(community|group)_admin|forbidden/i.test(message);
+      const terminal = attempt >= 8 || permanentPermissionFailure;
       const retryMinutes = Math.min(60, 5 * (2 ** Math.max(0, attempt - 1)));
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
@@ -146,7 +147,7 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   ]);
   const memberByPhone = new Map();
   for (const member of members) {
-    const phone = String(member.phone_e164 || member.phone || "").replace(/\\D/g, "");
+    const phone = String(member.phone_e164 || member.phone || "").replace(/\D/g, "");
     if (phone) memberByPhone.set(phone, member);
   }
   const subscriptionByMemberCommunity = new Map();
@@ -168,7 +169,7 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
       groupsChecked++;
       for (const participant of result.participants || []) {
         const jid = String(participant.id || "");
-        const phone = jid.split("@")[0].split(":")[0].replace(/\\D/g, "");
+        const phone = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
         if (!phone) continue; // WhatsApp LID identifiers cannot safely be mapped to a phone.
         const member = memberByPhone.get(phone);
         if (!member || !subscriptionByMemberCommunity.has(member.id + ":" + group.community_id)) continue;
@@ -209,7 +210,8 @@ export default async (_request) => {
 
   const now = new Date();
   const nowIso = iso(now);
-  const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);\n  const additions = await processPendingAdditions(now, nowIso);
+  const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);
+  const additions = await processPendingAdditions(now, nowIso);
   const expired = await db(
     "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
   );
@@ -341,7 +343,9 @@ export default async (_request) => {
 
   return Response.json({
     ok: true,
-    participant_sync_groups: participantSync.groups_checked,\n    memberships_confirmed: participantSync.memberships_confirmed,\n    subscriptions_checked: expired.length,
+    participant_sync_groups: participantSync.groups_checked,
+    memberships_confirmed: participantSync.memberships_confirmed,
+    subscriptions_checked: expired.length,
     removals_succeeded: removalsSucceeded,
     additions_succeeded: additions.succeeded,
     additions_pending: additions.pending,
