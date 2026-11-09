@@ -679,7 +679,10 @@ async function handleKursinhaWebhook(request) {
     const now=new Date(), nowIso=iso(now);
     const metadata={...(payment.metadata || {}),product_id:data?.product?.id,product_name:data?.product?.name || "Encontre +",sale_id:saleId,order_id:data?.orderId || null,buyer_id:data?.buyer?.id || null,transaction_id:data?.payment?.transactionId || null,payment_method:data?.payment?.method || null,last_event:event,last_event_timestamp:payload.timestamp || nowIso,checkout_url:KURSINHA_CHECKOUT_URL};
     if (event==="sale.pending") {
-      if (!["paid","cancelled"].includes(payment.status)) await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,status:"pending",payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
+      if (!["paid","cancelled"].includes(payment.status)) {
+        await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,status:"pending",payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
+        await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:payment.member_id,action:"renewal.payment_pending",entity_type:"payment",entity_id:payment.id,old_values:{status:payment.status},new_values:{status:"pending",sale_id:saleId,amount:1000,currency:"AOA"}}]),headers:{Prefer:"return=minimal"}});
+      }
     } else if (event==="sale.approved") {
       if (payment.status!=="paid") {
         await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
