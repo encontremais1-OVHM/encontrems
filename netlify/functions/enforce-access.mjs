@@ -227,7 +227,7 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
     db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&order=id.asc&limit=1000"),
     db("members?select=id,phone,phone_e164&registration_source=eq.web&limit=1000"),
     db("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period)&limit=1000"),
-    db("group_memberships?select=id,member_id,whatsapp_group_id,status"),
+    db("group_memberships?select=id,member_id,whatsapp_group_id,external_participant_id,status"),
   ]);
 
   // Keep the scheduled function below Netlify's 30-second execution limit:
@@ -263,17 +263,28 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   }));
 
   const rowsToConfirm = [];
+  const rowsToRemove = [];
   let groupsChecked = 0;
   for (const result of groupResults) {
     if (!result) continue;
     groupsChecked++;
     const { group, participants } = result;
+    const seenParticipantIds = new Set();
+    let safeToReconcileDepartures = participants.length > 0;
     for (const participant of participants) {
-      // Baileys 6.7.x can expose a LID as participant.id and the
-      // corresponding phone-number JID separately as participant.jid.
+      // Baileys may expose a LID as id and its phone JID separately as jid.
       const jid = String(participant.jid || participant.id || "");
+      if (!jid.endsWith("@s.whatsapp.net")) {
+        safeToReconcileDepartures = false;
+        continue; // Never infer a departure when this snapshot contains unresolvable LIDs.
+      }
       const phone = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
-      if (!phone) continue; // WhatsApp LID identifiers cannot safely be mapped to a phone.
+      if (!phone) {
+        safeToReconcileDepartures = false;
+        continue;
+      }
+      const canonicalJid = phone + "@s.whatsapp.net";
+      seenParticipantIds.add(canonicalJid);
       const member = memberByPhone.get(phone);
       if (!member || !subscriptionByMemberCommunity.has(member.id + ":" + group.community_id)) continue;
       const key = member.id + ":" + group.id;
@@ -282,7 +293,7 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
       rowsToConfirm.push({
         member_id: member.id,
         whatsapp_group_id: group.id,
-        external_participant_id: phone + "@s.whatsapp.net",
+        external_participant_id: canonicalJid,
         status: "joined",
         joined_at: nowIso,
         removed_at: null,
@@ -290,6 +301,16 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
         updated_at: nowIso,
       });
       membershipByKey.set(key, { ...existing, status: "joined" });
+    }
+    // Only mark a previously joined member as left when every participant in
+    // the complete WhatsApp snapshot can be represented by a phone JID.
+    if (safeToReconcileDepartures) {
+      for (const membership of memberships) {
+        if (membership.whatsapp_group_id !== group.id || membership.status !== "joined" || !membership.external_participant_id) continue;
+        const canonical = String(membership.external_participant_id).split("@")[0].split(":")[0].replace(/\D/g, "") + "@s.whatsapp.net";
+        if (seenParticipantIds.has(canonical)) continue;
+        rowsToRemove.push(membership);
+      }
     }
   }
 
@@ -300,7 +321,19 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     });
   }
-  return { groups_checked: groupsChecked, memberships_confirmed: rowsToConfirm.length };
+  for (const membership of rowsToRemove) {
+    await db("group_memberships?id=eq." + membership.id, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "removed", removed_at: nowIso, last_synced_at: nowIso, updated_at: nowIso }),
+      headers: { Prefer: "return=minimal" },
+    });
+    await db("audit_logs", {
+      method: "POST",
+      body: JSON.stringify([{ member_id: membership.member_id, action: "whatsapp.member_left_detected", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "joined" }, new_values: { status: "removed", whatsapp_group_id: membership.whatsapp_group_id, detected_at: nowIso } }]),
+      headers: { Prefer: "return=minimal" },
+    });
+  }
+  return { groups_checked: groupsChecked, memberships_confirmed: rowsToConfirm.length, memberships_removed: rowsToRemove.length };
 }
 
 export default async (_request) => {
@@ -494,6 +527,7 @@ export default async (_request) => {
     ok: true,
     participant_sync_groups: participantSync.groups_checked,
     memberships_confirmed: participantSync.memberships_confirmed,
+    memberships_removed: participantSync.memberships_removed || 0,
     subscriptions_checked: expired.length,
     removals_succeeded: removalsSucceeded,
     additions_succeeded: additions.succeeded,

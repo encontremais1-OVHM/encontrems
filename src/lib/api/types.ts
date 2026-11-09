@@ -39,6 +39,9 @@ export interface Member {
   days_remaining: number;
   grace_days_remaining: number;
   access_status: AccessStatus;
+  community_name?: string;
+  community_joined_at?: string | null;
+  groups?: Array<{id:string;name:string;status:string;joined_at:string|null}>;
 }
 
 export interface Paginated<T> {
@@ -178,6 +181,8 @@ export interface RegistrationReceipt {
 
 export interface RegistrationAccess {
   community: AccessStatus;
+  community_joined_at?: string | null;
+  groups?: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
   subgroup: AccessStatus;
   /** Only sent by the backend once access is authorised. */
   community_invite_url: string | null;

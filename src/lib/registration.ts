@@ -29,7 +29,8 @@ export function inviteLinks(s: RegistrationStatusResponse): {
   const subgroups = s.access.subgroup_invite_urls
     ?? (s.access.subgroup_invite_url ? [{id:"subgroup",name:"Subgrupo",url:s.access.subgroup_invite_url}] : []);
   return {
-    community: s.access.community === "active" ? s.access.community_invite_url : null,
+    // Show the invite only while entry is pending; hide it after WhatsApp confirms membership.
+    community: s.access.community === "active" ? null : s.access.community_invite_url,
     subgroup: subgroups[0]?.url ?? null,
     subgroups,
   };
@@ -86,13 +87,15 @@ export function deriveJourney(s: RegistrationStatusResponse): JourneyStep[] {
   ): JourneyStep => ({
     key,
     label,
-    state: link || status === "active"
+    state: status === "active"
       ? "done"
       : status === "failed"
         ? "failed"
-        : subscribed && !rejected
+        : subscribed && !rejected && link
           ? "current"
-          : "pending",
+          : subscribed && !rejected
+            ? "current"
+            : "pending",
   });
 
   return [

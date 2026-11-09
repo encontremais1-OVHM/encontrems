@@ -393,11 +393,12 @@ async function adminDashboard() {
 async function adminMembers(q) {
   const page = Math.max(1, Number(q.page || 1));
   const perPage = 25;
-  const [members, subscriptions, memberships, groups, operations] = await Promise.all([
+  const [members, subscriptions, memberships, groups, communities, operations] = await Promise.all([
     sb("members?select=id,full_name,phone,phone_e164,email,province,city,status,created_at&order=created_at.desc"),
     sb("subscriptions?select=member_id,community_id,status,expires_at,grace_ends_at&order=created_at.desc"),
-    sb("group_memberships?select=member_id,whatsapp_group_id,status"),
-    sb("whatsapp_groups?select=id,community_id,group_type,is_active"),
+    sb("group_memberships?select=member_id,whatsapp_group_id,status,joined_at"),
+    sb("whatsapp_groups?select=id,name,community_id,group_type,is_active"),
+    sb("communities?select=id,name"),
     sb("access_operations?select=member_id,whatsapp_group_id,operation_type,status,idempotency_key"),
   ]);
   const latestSub = new Map();
@@ -438,6 +439,16 @@ async function adminMembers(q) {
       days_remaining: daysRemaining,
       grace_days_remaining: graceDaysRemaining,
       access_status: accessStatus,
+      community_name: communities.find((community)=>community.id===sub?.community_id)?.name || "—",
+      community_joined_at: communityMembership?.status === "joined" ? communityMembership.joined_at || null : null,
+      groups: (membershipsByMember.get(m.id) || [])
+        .filter((membership)=>groups.some((group)=>group.id===membership.whatsapp_group_id && group.community_id===sub?.community_id && group.group_type==="subgroup"))
+        .map((membership)=>({
+          id:membership.whatsapp_group_id,
+          name:groups.find((group)=>group.id===membership.whatsapp_group_id)?.name || "Grupo",
+          status:membership.status,
+          joined_at:membership.joined_at || null,
+        })),
     };
   });
   if (q.search) {
@@ -492,7 +503,8 @@ async function confirmRenewalPayment(paymentId) {
     body:JSON.stringify({status:"paid",paid_at:iso(now),verified_at:iso(now),rejection_reason:null,updated_at:iso(now)}),
     headers:{Prefer:"return=minimal"},
   });
-  const communityGroups=await sb("whatsapp_groups?select=id&community_id=eq."+sub.community_id);
+  // Renewal restores the parent Community only. Members choose their subgroups again inside WhatsApp.
+  const communityGroups=await sb("whatsapp_groups?select=id&community_id=eq."+sub.community_id+"&group_type=eq.community");
   const communityGroupIds=communityGroups.map((group)=>group.id);
   const memberships=communityGroupIds.length
     ? await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq."+member.id+"&whatsapp_group_id=in.("+communityGroupIds.join(",")+")")
@@ -605,7 +617,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
     const participants = await bridge("/groups/" + encodeURIComponent(group.id) + "/participants");
     const valid = [];
     for (const participant of participants.participants || []) {
-      const jid = String(participant.id || "");
+      const jid = String(participant.jid || participant.id || "");
       if (!jid.endsWith("@s.whatsapp.net")) { skipped++; continue; }
       const phone = digits(jid.split("@")[0].split(":")[0]);
       if (!/^\d{8,15}$/.test(phone)) { skipped++; continue; }
@@ -771,6 +783,28 @@ export default async (request) => {
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
     const resourceMatch = path.match(/^\/admin\/resources\/(subscriptions|audit|communities|access|registrations|notifications|plans|users|reports)$/);
     if (resourceMatch && method === "GET") return json(200,await adminResource(resourceMatch[1]));
+    const manualRemove = path.match(/^\/admin\/members\/([0-9a-f-]{36})\/remove$/i);
+    if (manualRemove && method === "POST") {
+      const memberId = manualRemove[1];
+      const memberRows = await sb("members?select=id,full_name&id=eq." + memberId + "&limit=1");
+      if (!memberRows[0]) return json(404,{message:"Membro não encontrado."});
+      const subs = await sb("subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq." + memberId + "&order=created_at.desc&limit=1");
+      const subscription = subs[0];
+      if (!subscription) return json(409,{message:"Este membro não tem uma subscrição para revogar."});
+      if (subscription.status === "cancelled" && subscription.grace_ends_at && new Date(subscription.grace_ends_at).getTime() <= Date.now()) {
+        return json(202,{message:"A remoção deste membro já está agendada."});
+      }
+      const now = iso(new Date());
+      await sb("subscriptions?id=eq." + subscription.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"cancelled",grace_ends_at:now,ended_at:now,updated_at:now}),
+        headers:{Prefer:"return=minimal"},
+      });
+      await writeAudit(user,"member.access_revoked_manually","subscription",subscription.id,
+        {status:subscription.status,expires_at:subscription.expires_at,grace_ends_at:subscription.grace_ends_at},
+        {status:"cancelled",grace_ends_at:now,removal_queued:true},memberId);
+      return json(202,{message:"A revogação foi registada. A remoção da Comunidade e dos subgrupos será processada pelo serviço WhatsApp."});
+    }
     if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(q));
     if (path === "/admin/payments" && method === "GET") return json(200,await adminPayments());
     const paymentAction = path.match(/^\/admin\/payments\/([0-9a-f-]{36})\/(confirm|reject)$/i);
@@ -915,28 +949,60 @@ export default async (request) => {
       // The member joins the parent Community through its invite link, then
       // chooses linked subgroups inside WhatsApp. Never force-add people to
       // the Community or its subgroups from the registration request.
-      let currentCommunityInvite = null;
+      let currentCommunityInvite = mainGroups[0]?.invite_link || null;
       if (waConnected && mainGroups[0]?.external_group_id) {
         try {
-          currentCommunityInvite = (await bridge("/communities/" + encodeURIComponent(mainGroups[0].external_group_id) + "/invite-link")).invite_link || null;
-        } catch { /* the connected account must be an admin of the parent Community */ }
+          const freshInvite = (await bridge("/communities/" + encodeURIComponent(mainGroups[0].external_group_id) + "/invite-link")).invite_link || null;
+          if (freshInvite) {
+            currentCommunityInvite = freshInvite;
+            await sb("whatsapp_groups?id=eq." + mainGroups[0].id, {
+              method: "PATCH", body: JSON.stringify({ invite_link: freshInvite, updated_at: iso(new Date()) }),
+              headers: { Prefer: "return=minimal" },
+            });
+          }
+        } catch { /* use the last known invite link when the bridge is offline */ }
       }
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status,external_participant_id&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
+        let confirmedInWhatsApp = membership?.status === "joined";
+        if (waConnected && target.group.external_group_id) {
+          try {
+            const endpoint = target.kind === "community"
+              ? "/communities/" + encodeURIComponent(target.group.external_group_id) + "/participants"
+              : "/groups/" + encodeURIComponent(target.group.external_group_id) + "/participants";
+            const participantSnapshot = await bridge(endpoint);
+            confirmedInWhatsApp = (participantSnapshot.participants || []).some((participant) => {
+              const jid = String(participant.jid || participant.id || "");
+              return digits(jid.split("@")[0].split(":")[0]) === phone;
+            });
+          } catch { /* retain the last confirmed database state when WhatsApp cannot be queried */ }
+        }
         if (!membership) {
           const inserted = await sb("group_memberships", {
             method:"POST",
-            body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",status:"pending_invitation"}]),
+            body:JSON.stringify([{
+              member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",
+              status:confirmedInWhatsApp ? "joined" : "pending_invitation",
+              joined_at:confirmedInWhatsApp ? iso(new Date()) : null,
+            }]),
             headers:{Prefer:"return=representation"},
           });
           membership = inserted[0];
-        } else if (membership.status !== "joined") {
+        } else if (confirmedInWhatsApp && membership.status !== "joined") {
+          await sb("group_memberships?id=eq."+membership.id, {
+            method:"PATCH",
+            body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date()),updated_at:iso(new Date())}),
+            headers:{Prefer:"return=minimal"},
+          });
+          membership.status = "joined";
+        } else if (!confirmedInWhatsApp && membership.status !== "joined") {
           await sb("group_memberships?id=eq."+membership.id, {
             method:"PATCH",
             body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",removed_at:null,updated_at:iso(new Date())}),
             headers:{Prefer:"return=minimal"},
           });
+          membership.status = "pending_invitation";
         }
         const accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
         accessResults.push({
@@ -1003,8 +1069,8 @@ export default async (request) => {
       const [members,communities,groups,memberships,payments] = await Promise.all([
         sb("members?select=id,full_name,phone_e164,phone,created_at&id=eq."+sub.member_id+"&limit=1"),
         sb("communities?select=id,name,slug&id=eq."+sub.community_id+"&limit=1"),
-        sb("whatsapp_groups?select=id,name,group_type,external_group_id&community_id=eq."+sub.community_id+"&is_active=eq.true"),
-        sb("group_memberships?select=whatsapp_group_id,status&member_id=eq."+sub.member_id+"&order=created_at.desc"),
+        sb("whatsapp_groups?select=id,name,group_type,external_group_id,invite_link&community_id=eq."+sub.community_id+"&is_active=eq.true"),
+        sb("group_memberships?select=whatsapp_group_id,status,joined_at,removed_at&member_id=eq."+sub.member_id+"&order=created_at.desc"),
         sb("payments?select=payment_reference,amount,status,created_at,paid_at,payment_type,provider,metadata&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
       ]);
       const member = members[0], community = communities[0];
@@ -1022,15 +1088,23 @@ export default async (request) => {
       const latestPayment = payments[0];
       const paymentIsConfirmed = !latestPayment || latestPayment.payment_type === "renewal" || latestPayment.status === "paid";
       const subscriptionAllowsAccess = ["active","grace_period"].includes(sub.status);
-      let communityInvite = null;
+      let communityInvite = mainGroup?.invite_link || null;
       if (mainGroup?.external_group_id && paymentIsConfirmed && subscriptionAllowsAccess) {
         try {
           const connected = (await bridge("/status")).connected === true;
           if (connected) {
-            communityInvite = (await bridge("/communities/" + encodeURIComponent(mainGroup.external_group_id) + "/invite-link")).invite_link || null;
+            const freshInvite = (await bridge("/communities/" + encodeURIComponent(mainGroup.external_group_id) + "/invite-link")).invite_link || null;
+            if (freshInvite) {
+              communityInvite = freshInvite;
+              await sb("whatsapp_groups?id=eq." + mainGroup.id, {
+                method: "PATCH", body: JSON.stringify({ invite_link: freshInvite, updated_at: iso(new Date()) }),
+                headers: { Prefer: "return=minimal" },
+              });
+            }
           }
-        } catch { /* do not expose the cached/revoked invite link */ }
+        } catch { /* use the last invite stored during WhatsApp sync */ }
       }
+      if (!paymentIsConfirmed || !subscriptionAllowsAccess) communityInvite = null;
       const payment = latestPayment ? {
         reference:latestPayment.payment_reference,amount_kz:Number(latestPayment.amount),
         status:latestPayment.status==="paid"?"confirmed":latestPayment.status==="rejected"?"rejected":latestPayment.status==="cancelled"?"cancelled":"pending",
@@ -1045,7 +1119,18 @@ export default async (request) => {
         subgroups:selectedSubgroups.map((g)=>({name:g.name,slug:g.id})),
         payment,
         subscription:{status:sub.status,due_at:sub.expires_at},
-        access:{community:communityJoined ? "active" : "pending",subgroup:subgroupAccessReady ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite,subgroup_invite_urls:subgroupInviteUrls},
+        access:{
+          community:communityJoined ? "active" : "pending",
+          community_joined_at:memberships.find((m)=>m.status==="joined" && groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="community"))?.joined_at || null,
+          subgroup:subgroupAccessReady ? "active" : "pending",
+          community_invite_url:communityInvite,
+          subgroup_invite_url:subgroupInvite,
+          subgroup_invite_urls:subgroupInviteUrls,
+          groups:selectedSubgroups.map((g)=>{
+            const membership=memberships.find((m)=>m.whatsapp_group_id===g.id);
+            return {id:g.id,name:g.name,status:membership?.status || "pending_invitation",joined_at:membership?.joined_at || null,removed_at:membership?.removed_at || null};
+          }),
+        },
         rejection_reason:null,
       });
     }
