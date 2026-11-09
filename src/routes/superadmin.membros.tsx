@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Search, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { describeApiError } from "@/lib/api/client";
+import { apiRequest, describeApiError } from "@/lib/api/client";
 import { membersQuery, type MemberFilters } from "@/lib/api/endpoints";
 import { isApiConfigured } from "@/lib/config";
 import { formatDate, formatNumber, formatPhone } from "@/lib/format";
@@ -73,6 +73,14 @@ function MembersPage() {
     placeholderData: keepPreviousData,
   });
 
+  const removeMember = useMutation({
+    mutationFn: (memberId: string) => apiRequest<{message:string}>(`/admin/members/${memberId}/remove`, { method: "POST" }),
+    onSuccess: async (result) => {
+      window.alert(result.message);
+      await query.refetch();
+    },
+  });
+
   const hasFilters = search !== "" || status !== "all" || from !== "" || to !== "";
   const rows = query.data?.data ?? [];
   const meta = query.data?.meta;
@@ -102,6 +110,9 @@ function MembersPage() {
       <ApiNotConfiguredNotice />
       {query.isError && (
         <ApiErrorNotice message={describeApiError(query.error)} onRetry={() => query.refetch()} />
+      )}
+      {removeMember.isError && (
+        <ApiErrorNotice message={describeApiError(removeMember.error)} onRetry={() => removeMember.reset()} />
       )}
 
       <section className="rounded-xl border bg-card shadow-card">
@@ -158,6 +169,8 @@ function MembersPage() {
               <TableHead className="hidden md:table-cell">Vencimento</TableHead>
               <TableHead className="hidden md:table-cell">Dias restantes</TableHead>
               <TableHead className="hidden sm:table-cell">Acesso</TableHead>
+              <TableHead>Comunidade / grupos</TableHead>
+              <TableHead>Acção</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -189,6 +202,34 @@ function MembersPage() {
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <AccessBadge status={m.access_status} />
+                    </TableCell>
+                    <TableCell className="min-w-56">
+                      <p className="text-sm font-medium">{m.community_name || "—"}</p>
+                      {m.community_joined_at && <p className="text-xs text-muted-foreground">Comunidade desde {formatDate(m.community_joined_at)}</p>}
+                      {m.groups?.length ? (
+                        <ul className="mt-1 space-y-0.5">
+                          {m.groups.map((group) => (
+                            <li key={group.id} className="text-xs text-muted-foreground">
+                              {group.name} · {group.status === "joined" ? "dentro" : group.status === "removed" ? "saiu" : group.status === "removal_pending" ? "remoção pendente" : "aguarda"}
+                              {group.status === "joined" && group.joined_at ? ` · desde ${formatDate(group.joined_at)}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-xs text-muted-foreground">Sem subgrupos confirmados</p>}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={removeMember.isPending || !m.subscription_status || m.access_status === "removed"}
+                        onClick={() => {
+                          if (window.confirm(`Revogar o acesso de ${m.full_name}? A subscrição será cancelada e a remoção da Comunidade e dos subgrupos será colocada em fila.`)) {
+                            removeMember.mutate(m.id);
+                          }
+                        }}
+                      >
+                        {removeMember.isPending && removeMember.variables === m.id ? "A processar…" : "Remover acesso"}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
