@@ -149,8 +149,8 @@ async function processRenewalReminders(now, nowIso) {
       const expiryKey = String(new Date(subscription.expires_at).getTime());
       const idempotencyKey = "renewal:" + subscription.id + ":" + expiryKey;
       const existingPayments = await db("payments?select=id,payment_reference,status,metadata&subscription_id=eq." + subscription.id + "&payment_type=eq.renewal&provider=eq.kursinha&order=created_at.desc&limit=20");
-      let payment = existingPayments.find((p) => ["initiated","pending","under_review"].includes(p.status));
-      if (!payment) {
+      let payment = existingPayments.find((p) => ["initiated","pending","under_review"].includes(p.status)) || existingPayments[0] || null;
+      if (!payment && existingPayments.length === 0) {
         const paymentReference = "EN-R-" + subscription.id.slice(0,8).toUpperCase() + "-" + expiryKey.slice(-6);
         const created = await db("payments", {
           method: "POST",
