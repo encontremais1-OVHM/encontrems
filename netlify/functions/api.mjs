@@ -1044,7 +1044,7 @@ export default async (request) => {
         subgroups:selectedSubgroups.map((g)=>({name:g.name,slug:g.id})),
         payment,
         subscription:{status:sub.status,due_at:sub.expires_at},
-        access:{community:communityJoined || communityInvite ? "active" : "pending",subgroup:subgroupAccessReady ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite,subgroup_invite_urls:subgroupInviteUrls},
+        access:{community:communityJoined ? "active" : "pending",subgroup:subgroupAccessReady ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite,subgroup_invite_urls:subgroupInviteUrls},
         rejection_reason:null,
       });
     }
