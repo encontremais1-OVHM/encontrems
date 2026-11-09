@@ -80,7 +80,7 @@ async function processInitialAccess(now, nowIso) {
     db("members?select=id,phone,phone_e164,registration_source&registration_source=eq.web&limit=2000"),
     db("whatsapp_groups?select=id,community_id,name,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&limit=1000"),
     db("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period)&limit=2000"),
-    db("group_memberships?select=id,member_id,whatsapp_group_id,status,updated_at,external_participant_id&status=in.(pending_invitation,invited,failed)&order=updated_at.asc&limit=2000"),
+    db("group_memberships?select=id,member_id,whatsapp_group_id,status,updated_at,created_at,external_participant_id&status=in.(pending_invitation,invited,failed)&order=updated_at.asc&limit=2000"),
   ]);
 
   const memberById = new Map(members.map((member) => [member.id, member]));
@@ -97,9 +97,11 @@ async function processInitialAccess(now, nowIso) {
     const group = groupById.get(membership.whatsapp_group_id);
     if (!member || !group || !group.external_group_id) return false;
     if (!validSubscriptions.has(member.id + ":" + group.community_id)) return false;
-    if (membership.status === "pending_invitation") return true;
-    const updatedAt = membership.updated_at ? new Date(membership.updated_at).getTime() : 0;
-    const retryAfter = membership.status === "failed" ? 30 * 60 * 1000 : 15 * 60 * 1000;
+    const lastAttempt = membership.updated_at || membership.created_at;
+    const updatedAt = lastAttempt ? new Date(lastAttempt).getTime() : 0;
+    const retryAfter = membership.status === "pending_invitation"
+      ? 5 * 60 * 1000
+      : membership.status === "failed" ? 30 * 60 * 1000 : 15 * 60 * 1000;
     return now.getTime() - updatedAt >= retryAfter;
   }).slice(0, 5);
 
