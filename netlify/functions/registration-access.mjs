@@ -32,7 +32,7 @@ async function bridge(path, body) {
       ...(body ? { "content-type": "application/json" } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(9000),
+    signal: AbortSignal.timeout(4000),
   });
   const raw = await response.text();
   const data = raw ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : {};
@@ -103,7 +103,7 @@ async function processInitialAccess(now, nowIso) {
       ? 5 * 60 * 1000
       : membership.status === "failed" ? 30 * 60 * 1000 : 15 * 60 * 1000;
     return now.getTime() - updatedAt >= retryAfter;
-  }).slice(0, 5);
+  }).slice(0, 1);
 
   let attempted = 0, confirmed = 0, pending = 0;
   for (const membership of candidates) {
@@ -204,5 +204,5 @@ export default async () => {
 };
 
 export const config = {
-  schedule: "*/2 * * * *",
+  schedule: "* * * * *",
 };
