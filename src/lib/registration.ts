@@ -88,13 +88,15 @@ export function deriveJourney(s: RegistrationStatusResponse): JourneyStep[] {
   ): JourneyStep => ({
     key,
     label,
-    state: link || status === "active"
+    state: status === "active"
       ? "done"
       : status === "failed"
         ? "failed"
-        : subscribed && !rejected
+        : subscribed && !rejected && link
           ? "current"
-          : "pending",
+          : subscribed && !rejected
+            ? "current"
+            : "pending",
   });
 
   return [
