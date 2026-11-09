@@ -272,7 +272,7 @@ function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authori
         <div className="mt-4">
           <Button asChild>
             <a href={links.community} target="_blank" rel="noopener noreferrer">
-              Abrir WhatsApp e entrar na Comunidade
+              Usar convite actualizado (alternativa)
             </a>
           </Button>
         </div>
