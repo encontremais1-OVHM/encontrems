@@ -29,9 +29,8 @@ export function inviteLinks(s: RegistrationStatusResponse): {
   const subgroups = s.access.subgroup_invite_urls
     ?? (s.access.subgroup_invite_url ? [{id:"subgroup",name:"Subgrupo",url:s.access.subgroup_invite_url}] : []);
   return {
-    // A pending member still needs the invitation link to complete the first entry.
-    // The backend only returns this link while payment and subscription authorize access.
-    community: s.access.community_invite_url,
+    // Show the invite only while entry is pending; hide it after WhatsApp confirms membership.
+    community: s.access.community === "active" ? null : s.access.community_invite_url,
     subgroup: subgroups[0]?.url ?? null,
     subgroups,
   };
