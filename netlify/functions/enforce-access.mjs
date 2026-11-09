@@ -1,9 +1,9 @@
-const SUPABASE_URL = (Netlify.env.get("VITE_SUPABASE_URL") || Netlify.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
-const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\/+$/, "");
-const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
-const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "6aefd6a5531bcee4ede064fb";
-const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
+const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
+const KURSINHA_PRODUCT_ID = process.env.KURSINHA_PRODUCT_ID || "6aefd6a5531bcee4ede064fb";
+const KURSINHA_CHECKOUT_URL = process.env.KURSINHA_CHECKOUT_URL || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
 
 async function db(path, init = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
