@@ -1,7 +1,7 @@
-const SUPABASE_URL = (Netlify.env.get("VITE_SUPABASE_URL") || Netlify.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
-const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\/+$/, "");
-const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
+const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
 
 const iso = (date) => date.toISOString();
 const digits = (value) => String(value || "").replace(/\D/g, "");
