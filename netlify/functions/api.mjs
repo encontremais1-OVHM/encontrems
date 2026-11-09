@@ -964,19 +964,44 @@ export default async (request) => {
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status,external_participant_id&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
+        let confirmedInWhatsApp = membership?.status === "joined";
+        if (waConnected && target.group.external_group_id) {
+          try {
+            const endpoint = target.kind === "community"
+              ? "/communities/" + encodeURIComponent(target.group.external_group_id) + "/participants"
+              : "/groups/" + encodeURIComponent(target.group.external_group_id) + "/participants";
+            const participantSnapshot = await bridge(endpoint);
+            confirmedInWhatsApp = (participantSnapshot.participants || []).some((participant) => {
+              const jid = String(participant.jid || participant.id || "");
+              return digits(jid.split("@")[0].split(":")[0]) === phone;
+            });
+          } catch { /* retain the last confirmed database state when WhatsApp cannot be queried */ }
+        }
         if (!membership) {
           const inserted = await sb("group_memberships", {
             method:"POST",
-            body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",status:"pending_invitation"}]),
+            body:JSON.stringify([{
+              member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",
+              status:confirmedInWhatsApp ? "joined" : "pending_invitation",
+              joined_at:confirmedInWhatsApp ? iso(new Date()) : null,
+            }]),
             headers:{Prefer:"return=representation"},
           });
           membership = inserted[0];
-        } else if (membership.status !== "joined") {
+        } else if (confirmedInWhatsApp && membership.status !== "joined") {
+          await sb("group_memberships?id=eq."+membership.id, {
+            method:"PATCH",
+            body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date()),updated_at:iso(new Date())}),
+            headers:{Prefer:"return=minimal"},
+          });
+          membership.status = "joined";
+        } else if (!confirmedInWhatsApp && membership.status !== "joined") {
           await sb("group_memberships?id=eq."+membership.id, {
             method:"PATCH",
             body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",removed_at:null,updated_at:iso(new Date())}),
             headers:{Prefer:"return=minimal"},
           });
+          membership.status = "pending_invitation";
         }
         const accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
         accessResults.push({
