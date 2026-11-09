@@ -270,7 +270,7 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
     groupsChecked++;
     const { group, participants } = result;
     const seenParticipantIds = new Set();
-    let safeToReconcileDepartures = true;
+    let safeToReconcileDepartures = participants.length > 0;
     for (const participant of participants) {
       // Baileys may expose a LID as id and its phone JID separately as jid.
       const jid = String(participant.jid || participant.id || "");
