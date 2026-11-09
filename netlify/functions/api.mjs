@@ -647,10 +647,15 @@ async function resolveKursinhaPayment(data, saleId, event) {
   const bySale = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata,created_at&provider=eq.kursinha&provider_reference=eq."+encodeURIComponent(saleId)+"&limit=1");
   if (bySale[0]) return bySale[0];
   const phone = digits(data?.buyer?.phone);
-  if (!/^\d{8,15}$/.test(phone)) throw new Error("Kursinha buyer phone is missing or invalid.");
-  const members = await sb("members?select=id,phone_e164,phone&phone_e164=eq."+encodeURIComponent(phone)+"&limit=1");
+  let members = [];
+  if (/^\d{8,15}$/.test(phone)) {
+    members = await sb("members?select=id,phone_e164,phone,email&phone_e164=eq."+encodeURIComponent(phone)+"&limit=2");
+  }
+  if (!members.length && data?.buyer?.email) {
+    members = await sb("members?select=id,phone_e164,phone,email&email=ilike."+encodeURIComponent(String(data.buyer.email).trim())+"&limit=2");
+  }
+  if (members.length !== 1) throw new Error(members.length ? "Kursinha buyer identity matches multiple Encontre+ members." : "No Encontre+ member matches the Kursinha buyer phone or email.");
   const member = members[0];
-  if (!member) throw new Error("No Encontre+ member matches the Kursinha buyer phone.");
   const subs = await sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at&member_id=eq."+member.id+"&order=created_at.desc&limit=100");
   if (!subs.length) throw new Error("No Encontre+ subscription matches the Kursinha buyer.");
   const subIds = new Set(subs.map((sub)=>sub.id));
