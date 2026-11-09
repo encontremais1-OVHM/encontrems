@@ -616,7 +616,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
     const participants = await bridge("/groups/" + encodeURIComponent(group.id) + "/participants");
     const valid = [];
     for (const participant of participants.participants || []) {
-      const jid = String(participant.id || "");
+      const jid = String(participant.jid || participant.id || "");
       if (!jid.endsWith("@s.whatsapp.net")) { skipped++; continue; }
       const phone = digits(jid.split("@")[0].split(":")[0]);
       if (!/^\d{8,15}$/.test(phone)) { skipped++; continue; }
