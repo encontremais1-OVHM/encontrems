@@ -74,20 +74,52 @@ export async function signInWithPassword(email: string, password: string): Promi
   return session.user;
 }
 
-async function refreshSession(): Promise<SupabaseSession> {
-  const current = readSession();
-  if (!current?.refresh_token) throw new Error("A sessão expirou. Inicie sessão novamente.");
+let refreshInFlight: Promise<SupabaseSession> | null = null;
 
-  const next = await authRequest<SupabaseSession>("token?grant_type=refresh_token", {
-    method: "POST",
-    body: JSON.stringify({ refresh_token: current.refresh_token }),
-  });
-  if (!next.access_token || !next.refresh_token) {
-    clearSupabaseSession();
-    throw new Error("A sessão expirou. Inicie sessão novamente.");
+async function refreshSession(): Promise<SupabaseSession> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const current = readSession();
+    if (!current?.refresh_token) throw new Error("A sessão expirou. Inicie sessão novamente.");
+
+    const next = await authRequest<SupabaseSession>("token?grant_type=refresh_token", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: current.refresh_token }),
+    });
+    if (!next.access_token || !next.refresh_token) {
+      clearSupabaseSession();
+      throw new Error("A sessão expirou. Inicie sessão novamente.");
+    }
+    saveSession(next);
+    return next;
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
   }
-  saveSession(next);
-  return next;
+}
+
+/** Return a valid access token, refreshing shortly before expiry when possible. */
+export async function getAccessToken(forceRefresh = false): Promise<string | null> {
+  let session = readSession();
+  if (!session?.access_token) return null;
+
+  const expiresSoon = typeof session.expires_at === "number"
+    && session.expires_at <= Math.floor(Date.now() / 1000) + 60;
+
+  if (forceRefresh || expiresSoon) {
+    try {
+      session = await refreshSession();
+    } catch {
+      clearSupabaseSession();
+      return null;
+    }
+  }
+
+  return session.access_token;
 }
 
 export async function getAuthenticatedUser(): Promise<SupabaseUser | null> {
