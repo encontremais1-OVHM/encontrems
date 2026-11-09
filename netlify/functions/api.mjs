@@ -1,8 +1,12 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 const SUPABASE_URL = (Netlify.env.get("VITE_SUPABASE_URL") || Netlify.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = Netlify.env.get("VITE_SUPABASE_ANON_KEY") || "";
 const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\/+$/, "");
 const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
+const KURSINHA_SECRET = Netlify.env.get("KURSINHA_WEBHOOK_SECRET") || "";
+const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "";
+const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "";
 const OWNER_EMAIL = "hgconnect1@gmail.com";
 
 const json = (statusCode, payload) => Response.json(payload, {
@@ -620,6 +624,89 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   return { communities_imported: 1, groups_imported: groupsImported, subgroups_imported: source.subgroups?.length || 0, contacts_imported: contactsImported, participants_skipped: skipped };
 }
 
+
+function verifyKursinhaSignature(rawBody, header) {
+  if (!KURSINHA_SECRET || !header) return false;
+  const expected = "sha256=" + createHmac("sha256", KURSINHA_SECRET).update(rawBody).digest("hex");
+  const a = Buffer.from(String(header)), b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a,b);
+}
+
+async function resolveKursinhaPayment(data, saleId, event) {
+  const bySale = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&provider=eq.kursinha&provider_reference=eq."+encodeURIComponent(saleId)+"&limit=1");
+  if (bySale[0]) return bySale[0];
+  const phone = digits(data?.buyer?.phone);
+  if (!/^\\d{8,15}$/.test(phone)) throw new Error("Kursinha buyer phone is missing or invalid.");
+  const members = await sb("members?select=id,phone_e164,phone&phone_e164=eq."+encodeURIComponent(phone)+"&limit=1");
+  if (!members[0]) throw new Error("No Encontre+ member matches the Kursinha buyer phone.");
+  const subs = await sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at&member_id=eq."+members[0].id+"&order=created_at.desc&limit=1");
+  const sub = subs[0];
+  if (!sub) throw new Error("No Encontre+ subscription matches the Kursinha buyer.");
+  const pending = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&subscription_id=eq."+sub.id+"&provider=eq.kursinha&payment_type=eq.renewal&status=in.(initiated,pending,under_review)&order=created_at.desc&limit=1");
+  if (pending[0]) return pending[0];
+  const created = await sb("payments",{
+    method:"POST",
+    body:JSON.stringify([{member_id:members[0].id,subscription_id:sub.id,amount:1000,currency:"AOA",payment_type:"renewal",provider:"kursinha",provider_reference:saleId,payment_reference:"KUR-"+String(saleId).replace(/[^a-zA-Z0-9_-]/g,"").slice(-24),idempotency_key:"kursinha:"+saleId,status:event==="sale.cancelled"?"cancelled":"pending",metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL,sale_id:saleId,order_id:data?.orderId || null,buyer_id:data?.buyer?.id || null}}]),
+    headers:{Prefer:"return=representation"},
+  });
+  return created[0];
+}
+
+async function handleKursinhaWebhook(request) {
+  if (!KURSINHA_SECRET) return json(503,{message:"Webhook Kursinha ainda não está configurado no servidor."});
+  const raw = await request.text();
+  if (!verifyKursinhaSignature(raw,request.headers.get("x-webhook-signature"))) return json(401,{message:"Assinatura do webhook inválida."});
+  let payload;
+  try { payload=JSON.parse(raw); } catch { return json(400,{message:"JSON inválido."}); }
+  const event=String(payload?.event || ""), data=payload?.data || {}, saleId=String(data.saleId || "");
+  if (!["sale.pending","sale.approved","sale.cancelled"].includes(event) || !saleId) return json(400,{message:"Evento Kursinha inválido ou sem saleId."});
+  if (String(data?.product?.id || "")!==KURSINHA_PRODUCT_ID || Number(data?.product?.price)!==1000 || String(data?.product?.currency || "")!=="AOA") {
+    await sb("webhook_events?on_conflict=provider,external_event_id",{method:"POST",body:JSON.stringify([{provider:"kursinha",external_event_id:event+":"+saleId,event_type:event,payload,signature_valid:true,processing_status:"ignored",processed_at:iso(new Date())}]),headers:{Prefer:"resolution=ignore-duplicates,return=minimal"}});
+    return json(200,{received:true,ignored:true});
+  }
+  const externalId=event+":"+saleId;
+  const inserted=await sb("webhook_events?on_conflict=provider,external_event_id",{method:"POST",body:JSON.stringify([{provider:"kursinha",external_event_id:externalId,event_type:event,payload,signature_valid:true,processing_status:"processing"}]),headers:{Prefer:"resolution=ignore-duplicates,return=representation"}});
+  let eventRow=inserted?.[0];
+  if (!eventRow) {
+    const rows=await sb("webhook_events?select=id,processing_status&provider=eq.kursinha&external_event_id=eq."+encodeURIComponent(externalId)+"&limit=1");
+    eventRow=rows[0];
+    if (["processed","ignored","processing"].includes(eventRow?.processing_status)) return json(200,{received:true,duplicate:true});
+    if (eventRow?.id) await sb("webhook_events?id=eq."+eventRow.id,{method:"PATCH",body:JSON.stringify({processing_status:"processing",payload,signature_valid:true}),headers:{Prefer:"return=minimal"}});
+  }
+  try {
+    const payment=await resolveKursinhaPayment(data,saleId,event);
+    if (!payment) throw new Error("Renewal payment could not be associated with an Encontre+ member.");
+    const now=new Date(), nowIso=iso(now);
+    const metadata={...(payment.metadata || {}),product_id:data?.product?.id,product_name:data?.product?.name || "Encontre +",sale_id:saleId,order_id:data?.orderId || null,buyer_id:data?.buyer?.id || null,transaction_id:data?.payment?.transactionId || null,payment_method:data?.payment?.method || null,last_event:event,last_event_timestamp:payload.timestamp || nowIso,checkout_url:KURSINHA_CHECKOUT_URL};
+    if (event==="sale.pending") {
+      if (!["paid","cancelled"].includes(payment.status)) await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,status:"pending",payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
+    } else if (event==="sale.approved") {
+      if (payment.status!=="paid") {
+        await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
+        const confirmed=await confirmRenewalPayment(payment.id);
+        if (confirmed.status>=400) throw new Error(confirmed.body?.message || "Renewal activation failed.");
+      }
+    } else {
+      const wasPaid=payment.status==="paid";
+      await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,status:"cancelled",payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
+      await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:payment.member_id,action:"renewal.payment_cancelled",entity_type:"payment",entity_id:payment.id,old_values:{status:payment.status},new_values:{status:"cancelled",sale_id:saleId,was_paid:wasPaid}}]),headers:{Prefer:"return=minimal"}});
+      if (wasPaid && payment.subscription_id) {
+        const subs=await sb("subscriptions?select=id,status,expires_at&id=eq."+payment.subscription_id+"&limit=1");
+        const sub=subs[0];
+        if (sub) {
+          await sb("subscriptions?id=eq."+sub.id,{method:"PATCH",body:JSON.stringify({status:"cancelled",grace_ends_at:nowIso,ended_at:nowIso,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
+          await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:payment.member_id,action:"subscription.cancelled_after_kursinha_refund",entity_type:"subscription",entity_id:sub.id,old_values:{status:sub.status,expires_at:sub.expires_at},new_values:{status:"cancelled",ended_at:nowIso,sale_id:saleId}}]),headers:{Prefer:"return=minimal"}});
+        }
+      }
+    }
+    if (eventRow?.id) await sb("webhook_events?id=eq."+eventRow.id,{method:"PATCH",body:JSON.stringify({processing_status:"processed",processed_at:nowIso}),headers:{Prefer:"return=minimal"}});
+    return json(200,{received:true,processed:true,event});
+  } catch (error) {
+    if (eventRow?.id) await sb("webhook_events?id=eq."+eventRow.id,{method:"PATCH",body:JSON.stringify({processing_status:"failed"}),headers:{Prefer:"return=minimal"}}).catch(()=>{});
+    throw error;
+  }
+}
+
 export default async (request) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   const method = request.method || "GET";
@@ -631,6 +718,8 @@ export default async (request) => {
     if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
     if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
     if (path === "/public/interests" && method === "GET") return json(200,await publicInterests());
+
+    if (path === "/webhooks/kursinha" && method === "POST") return await handleKursinhaWebhook(request);
 
     const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET") || (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST");
     const user = await requireSuperAdmin(request);
@@ -767,18 +856,18 @@ export default async (request) => {
       let subscriptionId = previousSubs[0]?.id;
       if (previousSubs[0] && (["expired","cancelled","suspended","grace_period"].includes(previousSubs[0].status) || (previousSubs[0].expires_at && new Date(previousSubs[0].expires_at).getTime() <= now.getTime()))) {
         if (Number(plan.renewal_price) !== 1000) return json(409,{message:"O plano de renovação não está configurado para 1.000 Kz."});
-        const renewals = await sb("payments?select=id,status,payment_reference,amount&subscription_id=eq."+subscriptionId+"&payment_type=eq.renewal&order=created_at.desc&limit=50");
+        if (!KURSINHA_PRODUCT_ID || !KURSINHA_CHECKOUT_URL) return json(503,{message:"O pagamento Kursinha ainda não está configurado."});
+        const renewals = await sb("payments?select=id,status,payment_reference,amount,metadata,provider&subscription_id=eq."+subscriptionId+"&payment_type=eq.renewal&provider=eq.kursinha&order=created_at.desc&limit=50");
         const pendingRenewal = renewals.find((p)=>["initiated","pending","under_review"].includes(p.status));
-        if (pendingRenewal) {
-          return json(201,{reference:subscriptionId,status:"pending_payment",payment:{reference:pendingRenewal.payment_reference,amount_kz:Number(pendingRenewal.amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
-        }
+        if (pendingRenewal) return json(200,{reference:subscriptionId,status:"pending_payment",payment:{reference:pendingRenewal.payment_reference,amount_kz:Number(pendingRenewal.amount),status:"pending",instructions:[],checkout_url:pendingRenewal.metadata?.checkout_url || KURSINHA_CHECKOUT_URL,proof_upload_enabled:false,proof_submitted_at:null}});
+        const cycleKey = String(previousSubs[0]?.expires_at || "initial").replace(/[^0-9]/g,"");
         const referenceCode = "EN-R-" + crypto.randomUUID().slice(0,8).toUpperCase();
         const createdPayment = await sb("payments",{
           method:"POST",
-          body:JSON.stringify([{member_id:member.id,subscription_id:subscriptionId,amount:1000,currency:"AOA",payment_type:"renewal",provider:"manual",status:"pending",payment_reference:referenceCode,idempotency_key:"renewal:"+subscriptionId+":"+(renewals.length+1)}]),
+          body:JSON.stringify([{member_id:member.id,subscription_id:subscriptionId,amount:1000,currency:"AOA",payment_type:"renewal",provider:"kursinha",status:"pending",payment_reference:referenceCode,idempotency_key:"renewal:"+subscriptionId+":"+cycleKey,metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL}}]),
           headers:{Prefer:"return=representation"},
         });
-        return json(201,{reference:subscriptionId,status:"pending_payment",payment:{reference:createdPayment[0].payment_reference,amount_kz:Number(createdPayment[0].amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+        return json(201,{reference:subscriptionId,status:"pending_payment",payment:{reference:createdPayment[0].payment_reference,amount_kz:Number(createdPayment[0].amount),status:"pending",instructions:[],checkout_url:KURSINHA_CHECKOUT_URL,proof_upload_enabled:false,proof_submitted_at:null}});
       }
       if (!subscriptionId) {
         const createdSubscription = await sb("subscriptions",{method:"POST",body:JSON.stringify([{member_id:member.id,community_id:body.community_id,plan_id:plan.id,status:"active",starts_at:iso(now),expires_at:iso(expires),grace_ends_at:iso(grace),activated_at:iso(now)}]),headers:{Prefer:"return=representation"}});
@@ -892,7 +981,7 @@ export default async (request) => {
         sb("communities?select=id,name,slug&id=eq."+sub.community_id+"&limit=1"),
         sb("whatsapp_groups?select=id,name,group_type,external_group_id&community_id=eq."+sub.community_id+"&is_active=eq.true"),
         sb("group_memberships?select=whatsapp_group_id,status&member_id=eq."+sub.member_id+"&order=created_at.desc"),
-        sb("payments?select=payment_reference,amount,status,created_at,paid_at&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
+        sb("payments?select=payment_reference,amount,status,created_at,paid_at,payment_type,provider,metadata&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
       ]);
       const member = members[0], community = communities[0];
       if (!member || digits(member.phone_e164 || member.phone) !== phone || !community) return json(404,{message:"Inscrição não encontrada."});
@@ -920,10 +1009,11 @@ export default async (request) => {
       }
       const payment = latestPayment ? {
         reference:latestPayment.payment_reference,amount_kz:Number(latestPayment.amount),
-        status:latestPayment.status==="paid"?"confirmed":latestPayment.status==="rejected"?"rejected":"pending",
-        instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null,
+        status:latestPayment.status==="paid"?"confirmed":latestPayment.status==="rejected"?"rejected":latestPayment.status==="cancelled"?"cancelled":"pending",
+        instructions:[],checkout_url:latestPayment.metadata?.checkout_url || null,proof_upload_enabled:false,proof_submitted_at:null,
       } : {reference:sub.id,amount_kz:0,status:"confirmed",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null};
-      const registrationStatus = latestPayment && ["pending","initiated","under_review"].includes(latestPayment.status) ? "pending_payment" : "approved";
+      const isRenewalPayment = latestPayment?.payment_type === "renewal";
+      const registrationStatus = latestPayment && !isRenewalPayment && ["pending","initiated","under_review"].includes(latestPayment.status) ? "pending_payment" : latestPayment?.status === "cancelled" && !isRenewalPayment ? "cancelled" : "approved";
       return json(200,{
         reference:sub.id,status:registrationStatus,full_name:member.full_name,created_at:sub.created_at,
         community:{name:community.name,slug:community.slug},
