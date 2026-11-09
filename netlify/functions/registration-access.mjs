@@ -76,11 +76,12 @@ async function processInitialAccess(now, nowIso) {
   catch { return { connected: false, attempted: 0, confirmed: 0, pending: 0 }; }
   if (!connected) return { connected: false, attempted: 0, confirmed: 0, pending: 0 };
 
-  const [members, groups, subscriptions, memberships] = await Promise.all([
+  const [members, groups, subscriptions, memberships, operations] = await Promise.all([
     db("members?select=id,phone,phone_e164,registration_source&registration_source=eq.web&limit=2000"),
     db("whatsapp_groups?select=id,community_id,name,external_group_id,group_type,is_active,sync_status&is_active=eq.true&sync_status=eq.synced&limit=1000"),
     db("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period)&limit=2000"),
     db("group_memberships?select=id,member_id,whatsapp_group_id,status,updated_at,created_at,external_participant_id&status=in.(pending_invitation,invited,failed)&order=updated_at.asc&limit=2000"),
+    db("access_operations?select=idempotency_key,status,next_retry_at&operation_type=eq.add&limit=3000"),
   ]);
 
   const memberById = new Map(members.map((member) => [member.id, member]));
@@ -92,18 +93,26 @@ async function processInitialAccess(now, nowIso) {
     })
     .map((subscription) => subscription.member_id + ":" + subscription.community_id));
 
+  const operationByKey = new Map(operations.map((operation) => [operation.idempotency_key, operation]));
   const candidates = memberships.filter((membership) => {
     const member = memberById.get(membership.member_id);
     const group = groupById.get(membership.whatsapp_group_id);
     if (!member || !group || !group.external_group_id) return false;
     if (!validSubscriptions.has(member.id + ":" + group.community_id)) return false;
+    const operation = operationByKey.get("registration-add:" + membership.id);
+    // First attempt starts immediately. Subsequent attempts honour the durable
+    // retry time stored with the operation rather than delaying a new signup.
+    if (!operation) return true;
+    if (operation.next_retry_at && new Date(operation.next_retry_at).getTime() > now.getTime()) return false;
     const lastAttempt = membership.updated_at || membership.created_at;
     const updatedAt = lastAttempt ? new Date(lastAttempt).getTime() : 0;
-    const retryAfter = membership.status === "pending_invitation"
-      ? 5 * 60 * 1000
-      : membership.status === "failed" ? 30 * 60 * 1000 : 15 * 60 * 1000;
-    return now.getTime() - updatedAt >= retryAfter;
-  }).slice(0, 1);
+    if (operation.status === "failed") return now.getTime() - updatedAt >= 30 * 60 * 1000;
+    return true;
+  }).sort((left, right) => {
+    const leftGroup = groupById.get(left.whatsapp_group_id);
+    const rightGroup = groupById.get(right.whatsapp_group_id);
+    return (leftGroup?.group_type === "community" ? 0 : 1) - (rightGroup?.group_type === "community" ? 0 : 1);
+  }).slice(0, 3);
 
   let attempted = 0, confirmed = 0, pending = 0;
   for (const membership of candidates) {
