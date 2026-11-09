@@ -195,6 +195,7 @@ function EstadoPage() {
               subgroupNames={data.subgroups?.map((group) => group.name) || []}
               communityStatus={data.access?.community || "pending"}
               groups={data.access?.groups || []}
+              authorized={data.status === "approved" && data.payment?.status === "confirmed" && Boolean(data.subscription && ["active", "grace_period"].includes(data.subscription.status))}
             />
 
             {data.subscription?.due_at && Date.now() >= new Date(data.subscription.due_at).getTime() - 7 * 86400000 && data.payment?.status !== "pending" && data.status === "approved" && (
@@ -231,13 +232,14 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ links, subgroupNames, communityStatus, groups }: {
+function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authorized }: {
   links: { community: string | null; subgroup: string | null; subgroups:Array<{id:string;name:string;url:string}> };
   subgroupNames: string[];
   communityStatus: string;
   groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
+  authorized: boolean;
 }) {
-  if (!links.community) return null;
+  if (!authorized || communityStatus === "active") return null;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
       <p className="flex items-center gap-2 font-display text-lg font-extrabold text-foreground">
