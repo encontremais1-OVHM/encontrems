@@ -5,8 +5,8 @@ const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\/+$/, "");
 const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
 const KURSINHA_SECRET = Netlify.env.get("KURSINHA_WEBHOOK_SECRET") || "";
-const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "";
-const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "";
+const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "6aefd6a5531bcee4ede064fb";
+const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
 const OWNER_EMAIL = "hgconnect1@gmail.com";
 
 const json = (statusCode, payload) => Response.json(payload, {
@@ -497,19 +497,30 @@ async function confirmRenewalPayment(paymentId) {
   try { waConnected=(await bridge("/status")).connected===true; } catch {}
   for(const membership of memberships){
     if(membership.status==="joined") continue;
-    if(!waConnected || !phone){
-      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
-      continue;
+    const operationKey="renewal-add:"+payment.id+":"+membership.whatsapp_group_id;
+    const existingOps=await sb("access_operations?select=id,status,attempts&idempotency_key=eq."+encodeURIComponent(operationKey)+"&limit=1");
+    let operation=existingOps[0];
+    if(!operation){
+      const createdOps=await sb("access_operations",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:membership.whatsapp_group_id,operation_type:"add",status:"queued",idempotency_key:operationKey,attempts:0}]),headers:{Prefer:"return=representation"}});
+      operation=createdOps[0];
     }
+    await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     const groupRows=await sb("whatsapp_groups?select=external_group_id,group_type&id=eq."+membership.whatsapp_group_id+"&limit=1");
     const externalGroupId=groupRows[0]?.external_group_id;
-    const isCommunity=groupRows[0]?.group_type==="community";
-    if(!externalGroupId) continue;
+    if(!waConnected || !phone || !externalGroupId){
+      await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"retry_pending",last_error:!waConnected?"WhatsApp desconectado; a reentrada será tentada novamente.":!phone?"Número WhatsApp inválido.":"Identificador externo do grupo indisponível.",next_retry_at:iso(new Date(now.getTime()+15*60*1000)),updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+      continue;
+    }
+    const attempt=Number(operation.attempts || 0)+1;
+    await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"processing",attempts:attempt,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     try{
-      await bridge(isCommunity ? "/communities/"+encodeURIComponent(externalGroupId)+"/participants/add" : "/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
-      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(now),removed_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
-    }catch{
-      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+      await bridge(groupRows[0]?.group_type==="community"?"/communities/"+encodeURIComponent(externalGroupId)+"/participants/add":"/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
+      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(now),removed_at:null,last_synced_at:iso(now),updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+      await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"succeeded",executed_at:iso(now),last_error:null,next_retry_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
+      await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:member.id,action:"whatsapp.member_readded_after_renewal",entity_type:"group_membership",entity_id:membership.id,old_values:{status:membership.status},new_values:{status:"joined",whatsapp_group_id:membership.whatsapp_group_id,payment_id:payment.id,operation_id:operation.id}}]),headers:{Prefer:"return=minimal"}});
+    }catch(error){
+      const message=error instanceof Error?error.message.slice(0,300):"WhatsApp addition failed";
+      await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"retry_pending",last_error:message,next_retry_at:iso(new Date(now.getTime()+15*60*1000)),updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     }
   }
   await sb("audit_logs",{
