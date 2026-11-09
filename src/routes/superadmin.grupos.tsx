@@ -63,6 +63,10 @@ function GruposPage() {
 
   return <div className="space-y-6">
     <PageHeader title="Comunidades e grupos WhatsApp" description="Associe uma Comunidade verdadeira do WhatsApp a cada comunidade da plataforma. Os grupos internos ligados a ela serão importados como subgrupos selecionáveis." />
+    <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+      <p className="font-semibold">Criação e gestão de grupos reservadas aos administradores</p>
+      <p className="mt-1 text-muted-foreground">Os membros participantes não podem criar nem adicionar grupos à Comunidade Encontre +. A criação de grupos e a sua inclusão na Comunidade devem ser feitas por administradores no WhatsApp. Nesta plataforma, apenas utilizadores Super Admin podem associar, sincronizar, activar ou desactivar os grupos existentes. A sincronização importa os grupos da Comunidade; não cria grupos WhatsApp por iniciativa de membros.</p>
+    </div>
     {query.isError && <ApiErrorNotice message={describeApiError(query.error)} onRetry={() => query.refetch()} />}
     {communities.isError && <ApiErrorNotice message={describeApiError(communities.error)} onRetry={() => communities.refetch()} />}
     {whatsappCommunities.isError && <ApiErrorNotice message={describeApiError(whatsappCommunities.error)} onRetry={() => whatsappCommunities.refetch()} />}
