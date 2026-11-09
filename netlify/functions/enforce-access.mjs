@@ -231,10 +231,10 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   ]);
 
   // Keep the scheduled function below Netlify's 30-second execution limit:
-  // inspect at most 20 WhatsApp groups per run, rotating batches every 15 minutes.
+  // inspect at most 20 WhatsApp groups per run, rotating batches every 5 minutes.
   const batchSize = 20;
   const batchCount = Math.max(1, Math.ceil(allGroups.length / batchSize));
-  const batchIndex = Math.floor(Date.now() / (15 * 60 * 1000)) % batchCount;
+  const batchIndex = Math.floor(Date.now() / (5 * 60 * 1000)) % batchCount;
   const groups = allGroups.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
 
   const memberByPhone = new Map();
@@ -505,5 +505,5 @@ export default async (_request) => {
 };
 
 export const config = {
-  schedule: "*/15 * * * *",
+  schedule: "*/5 * * * *",
 };
