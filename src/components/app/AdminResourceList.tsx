@@ -55,6 +55,7 @@ export function AdminResourceList({resource,title,description,columns}:{resource
     queryKey:["admin","resource",resource],
     queryFn:()=>apiRequest<{data:Row[]}>(`/admin/resources/${resource}`),
     retry:false,
+    refetchInterval: resource === "access" || resource === "registrations" ? 30_000 : false,
   });
   const rows=query.data?.data||[];
   return <div className="space-y-6">
