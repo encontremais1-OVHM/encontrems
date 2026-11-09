@@ -110,10 +110,37 @@ async function processInitialAccess(now, nowIso) {
     const group = groupById.get(membership.whatsapp_group_id);
     const member = memberById.get(membership.member_id);
     const phone = digits(member?.phone_e164 || member?.phone);
+    const operationKey = "registration-add:" + membership.id;
+
+    // Keep a durable operation record so the Super Admin sees the same work
+    // that drives the member's real WhatsApp membership.
+    let operation = (await db("access_operations?select=id,status,attempts&idempotency_key=eq." + encodeURIComponent(operationKey) + "&limit=1"))[0];
+    if (!operation) {
+      const created = await db("access_operations", {
+        method: "POST",
+        body: JSON.stringify([{
+          member_id: member.id,
+          whatsapp_group_id: group.id,
+          operation_type: "add",
+          status: "queued",
+          idempotency_key: operationKey,
+          attempts: 0,
+        }]),
+        headers: { Prefer: "return=representation" },
+      });
+      operation = created?.[0];
+    }
+    if (!operation) throw new Error("Could not create the registration access operation.");
+
     if (!/^\d{8,15}$/.test(phone)) {
       await db("group_memberships?id=eq." + membership.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "failed", updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "Número de WhatsApp inválido para a entrada.", updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       await audit(member.id, membership.id, "whatsapp.direct_add_invalid_phone", { group_id: group.id, group_name: group.name });
@@ -121,7 +148,8 @@ async function processInitialAccess(now, nowIso) {
       continue;
     }
 
-    // Claim the row to avoid two scheduled invocations adding the same member.
+    // Claim the membership row so overlapping scheduled invocations cannot
+    // add the same person to the same WhatsApp group at the same time.
     const claimed = await db("group_memberships?id=eq." + membership.id + "&status=eq." + membership.status, {
       method: "PATCH",
       body: JSON.stringify({ status: "invited", updated_at: nowIso }),
@@ -129,28 +157,48 @@ async function processInitialAccess(now, nowIso) {
     });
     if (!claimed?.length) continue;
 
+    const attempt = Number(operation.attempts || 0) + 1;
+    await db("access_operations?id=eq." + operation.id, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "processing", attempts: attempt, last_error: null, next_retry_at: null, updated_at: nowIso }),
+      headers: { Prefer: "return=minimal" },
+    });
+
     attempted++;
     const isCommunity = group.group_type === "community";
     const basePath = isCommunity
       ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants"
       : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants";
+
     try {
-      // Avoid duplicate add attempts when the member is already present.
-      // Baileys may also return a pending/approval result, so verify afterwards.
+      // Never trust the add response alone: only a fresh participant snapshot
+      // can turn a pending membership into joined.
       let confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
       if (!confirmedInWhatsApp) {
         await bridge(basePath + "/add", { phone });
         confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
       }
+
       if (!confirmedInWhatsApp) {
+        const retryAt = iso(new Date(now.getTime() + 5 * 60 * 1000));
         await db("group_memberships?id=eq." + membership.id, {
           method: "PATCH",
           body: JSON.stringify({ status: "pending_invitation", updated_at: nowIso, last_synced_at: nowIso }),
           headers: { Prefer: "return=minimal" },
         });
+        await db("access_operations?id=eq." + operation.id, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "retry_pending",
+            last_error: "A operação foi aceite, mas o WhatsApp ainda não confirmou a participação.",
+            next_retry_at: retryAt,
+            updated_at: nowIso,
+          }),
+          headers: { Prefer: "return=minimal" },
+        });
         await audit(member.id, membership.id, "whatsapp.direct_add_not_yet_confirmed", {
           group_id: group.id, group_name: group.name, group_type: group.group_type,
-          reason: "WhatsApp did not yet include the member in its participant snapshot.",
+          operation_id: operation.id,
         });
         pending++;
         continue;
@@ -168,20 +216,35 @@ async function processInitialAccess(now, nowIso) {
         }),
         headers: { Prefer: "return=minimal" },
       });
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
       await audit(member.id, membership.id, "whatsapp.member_added_after_registration", {
         group_id: group.id, group_name: group.name, group_type: group.group_type,
-        phone, confirmed_by: "live_whatsapp_participant_snapshot",
+        phone, operation_id: operation.id, confirmed_by: "live_whatsapp_participant_snapshot",
       });
       confirmed++;
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp direct addition failed";
+      const permanentFailure = /bot_must_be_(community|group)_admin|forbidden|invalid_phone/i.test(message);
+      const terminal = permanentFailure || attempt >= 8;
+      const retryMinutes = Math.min(60, 5 * (2 ** Math.max(0, attempt - 1)));
+      const retryAt = terminal ? null : iso(new Date(now.getTime() + retryMinutes * 60 * 1000));
       await db("group_memberships?id=eq." + membership.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "pending_invitation", updated_at: nowIso }),
+        body: JSON.stringify({ status: terminal ? "failed" : "pending_invitation", updated_at: nowIso, last_synced_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: terminal ? "failed" : "retry_pending", attempts: attempt, last_error: message, next_retry_at: retryAt, updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       await audit(member.id, membership.id, "whatsapp.direct_add_failed", {
-        group_id: group.id, group_name: group.name, group_type: group.group_type, error: message,
+        group_id: group.id, group_name: group.name, group_type: group.group_type,
+        error: message, operation_id: operation.id,
       });
       pending++;
     }
