@@ -64,6 +64,37 @@ async function bridge(path, method = "GET", body) {
   return data;
 }
 
+/**
+ * Never return a cached WhatsApp invite: an administrator can reset it at any time.
+ * Refresh from the live bridge and clear the stored value whenever it cannot be verified.
+ */
+async function refreshCommunityInvite(group) {
+  if (!group?.id || !group.external_group_id) return null;
+  try {
+    const status = await bridge("/status");
+    if (status.connected !== true) throw new Error("WhatsApp bridge is disconnected.");
+    const result = await bridge("/communities/" + encodeURIComponent(group.external_group_id) + "/invite-link");
+    const candidate = typeof result.invite_link === "string" ? result.invite_link : "";
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "chat.whatsapp.com" || !parsed.pathname.slice(1)) {
+      throw new Error("WhatsApp did not return a valid community invite link.");
+    }
+    const inviteLink = parsed.toString();
+    await sb("whatsapp_groups?id=eq." + group.id, {
+      method: "PATCH", body: JSON.stringify({ invite_link: inviteLink, updated_at: iso(new Date()) }),
+      headers: { Prefer: "return=minimal" },
+    });
+    return inviteLink;
+  } catch (error) {
+    await sb("whatsapp_groups?id=eq." + group.id, {
+      method: "PATCH", body: JSON.stringify({ invite_link: null, updated_at: iso(new Date()) }),
+      headers: { Prefer: "return=minimal" },
+    }).catch(() => {});
+    console.warn("Live WhatsApp community invite unavailable; cached invite cleared:", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
+}
+
 const digits = (value) => String(value || "").replace(/\D/g, "");
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const iso = (date) => date.toISOString();
@@ -832,8 +863,16 @@ export default async (request) => {
       return json(200,{message:"Pagamento rejeitado."});
     }
     if (path === "/admin/whatsapp/status" && method === "GET") {
-      const status = await bridge("/status");
-      return json(200,status);
+      try {
+        const status = await bridge("/status");
+        return json(200,status);
+      } catch (error) {
+        return json(503,{
+          state:"disconnected",connected:false,has_qr:false,has_pairing_code:false,
+          last_error:error instanceof Error ? error.message : "Serviço WhatsApp indisponível.",
+          code:"whatsapp_bridge_unavailable",
+        });
+      }
     }
     if (path === "/admin/whatsapp/groups" && method === "GET") {
       const [groups,memberships,members] = await Promise.all([
@@ -949,18 +988,13 @@ export default async (request) => {
       // The member joins the parent Community through its invite link, then
       // chooses linked subgroups inside WhatsApp. Never force-add people to
       // the Community or its subgroups from the registration request.
-      let currentCommunityInvite = mainGroups[0]?.invite_link || null;
-      if (waConnected && mainGroups[0]?.external_group_id) {
-        try {
-          const freshInvite = (await bridge("/communities/" + encodeURIComponent(mainGroups[0].external_group_id) + "/invite-link")).invite_link || null;
-          if (freshInvite) {
-            currentCommunityInvite = freshInvite;
-            await sb("whatsapp_groups?id=eq." + mainGroups[0].id, {
-              method: "PATCH", body: JSON.stringify({ invite_link: freshInvite, updated_at: iso(new Date()) }),
-              headers: { Prefer: "return=minimal" },
-            });
-          }
-        } catch { /* use the last known invite link when the bridge is offline */ }
+      // Never send the last saved invite as a fallback: it may have been reset in WhatsApp.
+      const currentCommunityInvite = waConnected ? await refreshCommunityInvite(mainGroups[0]) : null;
+      if (!waConnected) {
+        await sb("whatsapp_groups?id=eq." + mainGroups[0].id, {
+          method: "PATCH", body: JSON.stringify({ invite_link: null, updated_at: iso(new Date()) }),
+          headers: { Prefer: "return=minimal" },
+        }).catch(() => {});
       }
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status,external_participant_id&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
@@ -1088,23 +1122,10 @@ export default async (request) => {
       const latestPayment = payments[0];
       const paymentIsConfirmed = !latestPayment || latestPayment.payment_type === "renewal" || latestPayment.status === "paid";
       const subscriptionAllowsAccess = ["active","grace_period"].includes(sub.status);
-      let communityInvite = mainGroup?.invite_link || null;
-      if (mainGroup?.external_group_id && paymentIsConfirmed && subscriptionAllowsAccess) {
-        try {
-          const connected = (await bridge("/status")).connected === true;
-          if (connected) {
-            const freshInvite = (await bridge("/communities/" + encodeURIComponent(mainGroup.external_group_id) + "/invite-link")).invite_link || null;
-            if (freshInvite) {
-              communityInvite = freshInvite;
-              await sb("whatsapp_groups?id=eq." + mainGroup.id, {
-                method: "PATCH", body: JSON.stringify({ invite_link: freshInvite, updated_at: iso(new Date()) }),
-                headers: { Prefer: "return=minimal" },
-              });
-            }
-          }
-        } catch { /* use the last invite stored during WhatsApp sync */ }
-      }
-      if (!paymentIsConfirmed || !subscriptionAllowsAccess) communityInvite = null;
+      // The status page must also verify the current invite live; stale cached links are never exposed.
+      const communityInvite = paymentIsConfirmed && subscriptionAllowsAccess && mainGroup
+        ? await refreshCommunityInvite(mainGroup)
+        : null;
       const payment = latestPayment ? {
         reference:latestPayment.payment_reference,amount_kz:Number(latestPayment.amount),
         status:latestPayment.status==="paid"?"confirmed":latestPayment.status==="rejected"?"rejected":latestPayment.status==="cancelled"?"cancelled":"pending",
