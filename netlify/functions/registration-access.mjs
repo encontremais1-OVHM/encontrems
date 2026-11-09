@@ -1,10 +1,10 @@
-const SUPABASE_URL = (Netlify.env.get("VITE_SUPABASE_URL") || Netlify.env.get("SUPABASE_URL") || "").replace(/\\/+$/, "");
-const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\\/+$/, "");
-const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
+const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
 
 const iso = (date) => date.toISOString();
-const digits = (value) => String(value || "").replace(/\\D/g, "");
+const digits = (value) => String(value || "").replace(/\D/g, "");
 
 async function db(path, init = {}) {
   if (!SUPABASE_URL || !SERVICE_KEY) throw new Error("Supabase server configuration is incomplete.");
@@ -110,7 +110,7 @@ async function processInitialAccess(now, nowIso) {
     const group = groupById.get(membership.whatsapp_group_id);
     const member = memberById.get(membership.member_id);
     const phone = digits(member?.phone_e164 || member?.phone);
-    if (!/^\\d{8,15}$/.test(phone)) {
+    if (!/^\d{8,15}$/.test(phone)) {
       await db("group_memberships?id=eq." + membership.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "failed", updated_at: nowIso }),

@@ -1,4 +1,5 @@
 import { isApiConfigured } from "../config";
+import { getAccessToken } from "../supabase-auth";
 
 export class ApiNotConfiguredError extends Error {
   constructor() {
@@ -43,24 +44,31 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const headers: Record<string, string> = { Accept: "application/json" };
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
   if (options.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("encontre.supabase.session") : null;
-  if (options.auth !== false && token) {
-    try {
-      const session = JSON.parse(token) as { access_token?: string };
-      if (session.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-    } catch {
-      // Auth guard will redirect if the stored session is malformed.
-    }
-  }
+  let accessToken = options.auth === false ? null : await getAccessToken();
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+  const requestUrl = buildUrl(path, options.query);
+  const requestInit: RequestInit = {
+    method: options.method ?? "GET",
+    headers,
+    body: options.body === undefined ? null : isForm ? options.body as FormData : JSON.stringify(options.body),
+    signal: options.signal ?? null,
+  };
 
   let response: Response;
   try {
-    response = await fetch(buildUrl(path, options.query), {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body === undefined ? null : isForm ? options.body as FormData : JSON.stringify(options.body),
-      signal: options.signal ?? null,
-    });
+    response = await fetch(requestUrl, requestInit);
+
+    // A token can expire between the preflight refresh and this request.
+    // Refresh once and retry, while refreshSession serializes concurrent calls.
+    if (response.status === 401 && options.auth !== false && accessToken) {
+      const refreshedToken = await getAccessToken(true);
+      if (refreshedToken && refreshedToken !== accessToken) {
+        accessToken = refreshedToken;
+        requestInit.headers = { ...headers, Authorization: `Bearer ${accessToken}` };
+        response = await fetch(requestUrl, requestInit);
+      }
+    }
   } catch {
     throw new ApiError(0, "Não foi possível contactar a API segura da aplicação.", null);
   }
