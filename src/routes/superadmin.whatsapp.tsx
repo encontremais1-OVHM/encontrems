@@ -17,6 +17,8 @@ type WhatsAppStatus = {
   has_pairing_code: boolean;
   last_error: string | null;
   phone: string | null;
+  pairing_in_progress?: boolean;
+  qr_expires_at?: string | null;
 };
 type Group = { id: string; name: string; description: string | null; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
 
@@ -70,6 +72,8 @@ function WhatsappPage() {
   const state = status.data?.state;
   const connected = Boolean(status.data?.connected);
   const actionError = connect.error || pair.error || disconnect.error || sync.error;
+  const sessionActive = state === "connected" || state === "connecting" || state === "error";
+  const pairingBusy = Boolean(status.data?.pairing_in_progress) || pair.isPending;
 
   return (
     <div className="space-y-6">
@@ -94,11 +98,13 @@ function WhatsappPage() {
           </div>
           {status.data?.last_error && <p className="flex gap-2 text-sm text-destructive"><CircleAlert className="size-4 shrink-0" />{status.data.last_error}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => connect.mutate()} disabled={connected || state === "connecting" || connect.isPending || status.isPending}>
+            <Button onClick={() => connect.mutate()} disabled={connected || state === "connecting" || connect.isPending || pair.isPending || status.isPending}>
               {connect.isPending ? <Loader2 className="animate-spin" /> : <QrCode />} {state === "connecting" ? "A aguardar leitura" : "Gerar QR Code"}
             </Button>
-            <Button variant="outline" onClick={() => disconnect.mutate()} disabled={!connected || disconnect.isPending}>
-              {disconnect.isPending ? <Loader2 className="animate-spin" /> : null} Desconectar
+            <Button variant="outline" onClick={() => {
+              if (window.confirm("Isto vai terminar a sessão WhatsApp actual e apagar apenas as credenciais locais para poderes ligar outro número. Queres continuar?")) disconnect.mutate();
+            }} disabled={!sessionActive || disconnect.isPending || pairingBusy}>
+              {disconnect.isPending ? <Loader2 className="animate-spin" /> : null} {state === "connecting" ? "Cancelar ligação" : "Desconectar / trocar número"}
             </Button>
           </div>
         </div>
@@ -107,10 +113,12 @@ function WhatsappPage() {
           <p className="text-sm text-muted-foreground">Introduza o número da conta WhatsApp com indicativo internacional, apenas dígitos. O código deve ser inserido em WhatsApp → Dispositivos associados → Associar com número de telefone.</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="244923000000" inputMode="numeric" aria-label="Número com indicativo" />
-            <Button variant="outline" onClick={() => pair.mutate()} disabled={pair.isPending || phone.replace(/\D/g,"").length < 8}>
+            <Button variant="outline" onClick={() => pair.mutate()} disabled={pairingBusy || connected || state === "connecting" || phone.replace(/\D/g,"").length < 8}>
               {pair.isPending ? <Loader2 className="animate-spin" /> : <Smartphone />} Gerar código
             </Button>
           </div>
+          {state === "connecting" && pairingCode && <p className="text-sm text-warning">Código gerado. Introduza-o no telemóvel e mantenha esta página aberta até aparecer «Ligado».</p>}
+          {state === "connecting" && !pairingCode && <p className="text-sm text-muted-foreground">A preparar a ligação segura. Aguarde o QR Code ou cancele para mudar o método.</p>}
           {pairingCode && <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Código de vinculação</p>
             <p className="mt-2 font-mono text-3xl font-black tracking-[0.2em] text-foreground">{pairingCode}</p>
@@ -127,7 +135,7 @@ function WhatsappPage() {
           </div>
           <div className="mt-4 flex flex-col items-center gap-3">
             <img src={qr.data.qr_data_url} alt="QR Code de ligação do WhatsApp" className="size-64 rounded-xl border bg-white p-2" />
-            <p className="max-w-lg text-center text-sm text-muted-foreground">No telemóvel, abra WhatsApp → Dispositivos associados → Associar dispositivo e leia este código. A página verifica automaticamente quando a ligação for concluída.</p>
+            <p className="max-w-lg text-center text-sm text-muted-foreground">No telemóvel, abra WhatsApp → Dispositivos associados → Associar dispositivo e leia este código. Mantenha o telemóvel desbloqueado e a página aberta até a ligação ser confirmada.</p>
           </div>
         </section>
       )}
