@@ -13,7 +13,12 @@ type Column = { key: string; label: string };
 
 const STATUS_LABELS: Record<string, string> = {
   joined: "Entrada confirmada",
-  pending_invitation: "Convite enviado — entrada pendente",
+  pending_invitation: "A aguardar confirmação do WhatsApp",
+  invited: "A adicionar pelo WhatsApp",
+  queued: "Na fila de processamento",
+  processing: "A processar",
+  retry_pending: "Nova tentativa agendada",
+  succeeded: "Concluída",
   pending: "Pendente",
   active: "Ativa",
   grace_period: "Em período de tolerância",
@@ -55,6 +60,7 @@ export function AdminResourceList({resource,title,description,columns}:{resource
     queryKey:["admin","resource",resource],
     queryFn:()=>apiRequest<{data:Row[]}>(`/admin/resources/${resource}`),
     retry:false,
+    refetchInterval: resource === "access" || resource === "registrations" ? 30_000 : false,
   });
   const rows=query.data?.data||[];
   return <div className="space-y-6">

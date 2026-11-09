@@ -130,6 +130,8 @@ export const registrationStatusQuery = (reference: string, whatsapp: string) =>
       ),
     enabled: isApiConfigured() && reference.length > 0 && whatsapp.length > 0,
     retry: false,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 
 /** POST /public/registrations/{reference}/payment-proof (multipart: whatsapp, file) */

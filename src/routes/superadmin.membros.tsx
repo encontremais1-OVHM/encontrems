@@ -71,6 +71,7 @@ function MembersPage() {
   const query = useQuery({
     ...membersQuery({ search: debouncedSearch, status, from, to, page }),
     placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
   });
 
   const removeMember = useMutation({

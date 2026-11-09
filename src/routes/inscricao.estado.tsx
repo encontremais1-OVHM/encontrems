@@ -17,7 +17,7 @@ import type { RegistrationStatus } from "@/lib/api/types";
 import { isApiConfigured } from "@/lib/config";
 import { formatDate } from "@/lib/format";
 import { normalizeAngolaWhatsapp } from "@/lib/phone";
-import { deriveJourney, inviteLinks, type JourneyState } from "@/lib/registration";
+import { deriveJourney, type JourneyState } from "@/lib/registration";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/inscricao/estado")({
@@ -191,7 +191,6 @@ function EstadoPage() {
             </section>
 
             <WhatsAppAccess
-              links={inviteLinks(data)}
               subgroupNames={data.subgroups?.map((group) => group.name) || []}
               communityStatus={data.access?.community || "pending"}
               groups={data.access?.groups || []}
@@ -232,8 +231,7 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authorized }: {
-  links: { community: string | null; subgroup: string | null; subgroups:Array<{id:string;name:string;url:string}> };
+function WhatsAppAccess({ subgroupNames, communityStatus, groups, authorized }: {
   subgroupNames: string[];
   communityStatus: string;
   groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
@@ -268,17 +266,11 @@ function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authori
           </ul>
         </div>
       )}
-      {communityStatus !== "active" && links.community ? (
-        <div className="mt-4">
-          <Button asChild>
-            <a href={links.community} target="_blank" rel="noopener noreferrer">
-              Usar convite actualizado (alternativa)
-            </a>
-          </Button>
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-amber-700">{communityStatus === "active" ? "A entrada na Comunidade já está confirmada. Os subgrupos seleccionados continuam a ser sincronizados." : "A adição automática ainda não foi confirmada e o convite actualizado não está disponível neste momento. Actualize o estado mais tarde."}</p>
-      )}
+      <p className="mt-4 text-sm text-muted-foreground">
+        {communityStatus === "active"
+          ? "A entrada na Comunidade já está confirmada. Os subgrupos seleccionados continuam a ser sincronizados automaticamente."
+          : "A plataforma está a processar a entrada autorizada. Não é necessário abrir nem partilhar ligações de convite. O estado será actualizado automaticamente."}
+      </p>
     </section>
   );
 }
