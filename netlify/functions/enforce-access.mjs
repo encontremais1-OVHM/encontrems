@@ -2,8 +2,8 @@ const SUPABASE_URL = (Netlify.env.get("VITE_SUPABASE_URL") || Netlify.env.get("S
 const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\/+$/, "");
 const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
-const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "";
-const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "";
+const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "6aefd6a5531bcee4ede064fb";
+const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
 
 async function db(path, init = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -63,6 +63,11 @@ async function processPendingAdditions(now, nowIso) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("audit_logs", {
+        method: "POST",
+        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_added_after_renewal", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "pending_invitation" }, new_values: { status: "joined", whatsapp_group_id: operation.whatsapp_group_id, operation_id: operation.id } }]),
         headers: { Prefer: "return=minimal" },
       });
       succeeded++;
