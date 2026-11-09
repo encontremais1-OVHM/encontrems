@@ -1020,7 +1020,7 @@ export default async (request) => {
       const subgroupInvite = null;
       const subgroup = selectedSubgroups[0] || null;
       const latestPayment = payments[0];
-      const paymentIsConfirmed = !latestPayment || latestPayment.status === "paid";
+      const paymentIsConfirmed = !latestPayment || latestPayment.payment_type === "renewal" || latestPayment.status === "paid";
       const subscriptionAllowsAccess = ["active","grace_period"].includes(sub.status);
       let communityInvite = null;
       if (mainGroup?.external_group_id && paymentIsConfirmed && subscriptionAllowsAccess) {
