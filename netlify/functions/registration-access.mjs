@@ -135,11 +135,14 @@ async function processInitialAccess(now, nowIso) {
       ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants"
       : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants";
     try {
-      // Baileys may add immediately or return a pending/approval result.
-      // Neither result alone is proof of membership: verify with WhatsApp.
-      await bridge(basePath + "/add", { phone });
-      const snapshot = await bridge(basePath);
-      if (!participantMatches(snapshot.participants, phone)) {
+      // Avoid duplicate add attempts when the member is already present.
+      // Baileys may also return a pending/approval result, so verify afterwards.
+      let confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
+      if (!confirmedInWhatsApp) {
+        await bridge(basePath + "/add", { phone });
+        confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
+      }
+      if (!confirmedInWhatsApp) {
         await db("group_memberships?id=eq." + membership.id, {
           method: "PATCH",
           body: JSON.stringify({ status: "pending_invitation", updated_at: nowIso, last_synced_at: nowIso }),
