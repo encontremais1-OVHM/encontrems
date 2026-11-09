@@ -298,6 +298,11 @@ export default async (_request) => {
   const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);
   const additions = await processPendingAdditions(now, nowIso);
   const reminders = await processRenewalReminders(now, nowIso);
+  const enteringGrace = await db("subscriptions?select=id,member_id,status,expires_at,grace_ends_at&status=eq.active&expires_at=lt." + encodeURIComponent(nowIso) + "&grace_ends_at=gte." + encodeURIComponent(nowIso) + "&limit=500");
+  for (const subscription of enteringGrace) {
+    await db("subscriptions?id=eq." + subscription.id, { method: "PATCH", body: JSON.stringify({ status: "grace_period", updated_at: nowIso }), headers: { Prefer: "return=minimal" } });
+    await db("audit_logs", { method: "POST", body: JSON.stringify([{ member_id: subscription.member_id, action: "subscription.grace_period_started", entity_type: "subscription", entity_id: subscription.id, old_values: { status: "active", expires_at: subscription.expires_at }, new_values: { status: "grace_period", grace_ends_at: subscription.grace_ends_at } }]), headers: { Prefer: "return=minimal" } });
+  }
   const expired = await db(
     "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired,cancelled)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
   );
@@ -427,6 +432,11 @@ export default async (_request) => {
         await db("access_operations?id=eq." + operation.id, {
           method: "PATCH",
           body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, updated_at: nowIso }),
+          headers: { Prefer: "return=minimal" },
+        });
+        await db("audit_logs", {
+          method: "POST",
+          body: JSON.stringify([{ member_id: membership.member_id, action: "whatsapp.member_removed_after_expiry", entity_type: "group_membership", entity_id: membership.id, old_values: { status: membership.status }, new_values: { status: "removed", whatsapp_group_id: membership.whatsapp_group_id, subscription_id: subscription.id, operation_id: operation.id } }]),
           headers: { Prefer: "return=minimal" },
         });
         removalsSucceeded++;
