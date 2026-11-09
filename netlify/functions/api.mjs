@@ -636,22 +636,27 @@ async function resolveKursinhaPayment(data, saleId, event) {
   const bySale = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&provider=eq.kursinha&provider_reference=eq."+encodeURIComponent(saleId)+"&limit=1");
   if (bySale[0]) return bySale[0];
   const phone = digits(data?.buyer?.phone);
-  if (!/^\\d{8,15}$/.test(phone)) throw new Error("Kursinha buyer phone is missing or invalid.");
+  if (!/^\d{8,15}$/.test(phone)) throw new Error("Kursinha buyer phone is missing or invalid.");
   const members = await sb("members?select=id,phone_e164,phone&phone_e164=eq."+encodeURIComponent(phone)+"&limit=1");
-  if (!members[0]) throw new Error("No Encontre+ member matches the Kursinha buyer phone.");
-  const subs = await sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at&member_id=eq."+members[0].id+"&order=created_at.desc&limit=1");
-  const sub = subs[0];
-  if (!sub) throw new Error("No Encontre+ subscription matches the Kursinha buyer.");
-  const pending = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&subscription_id=eq."+sub.id+"&provider=eq.kursinha&payment_type=eq.renewal&status=in.(initiated,pending,under_review)&order=created_at.desc&limit=1");
-  if (pending[0]) return pending[0];
+  const member = members[0];
+  if (!member) throw new Error("No Encontre+ member matches the Kursinha buyer phone.");
+  const subs = await sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at&member_id=eq."+member.id+"&order=created_at.desc&limit=100");
+  if (!subs.length) throw new Error("No Encontre+ subscription matches the Kursinha buyer.");
+  const subIds = new Set(subs.map((sub)=>sub.id));
+  const pendingRows = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&member_id=eq."+member.id+"&provider=eq.kursinha&payment_type=eq.renewal&status=in.(initiated,pending,under_review)&order=created_at.desc&limit=100");
+  const pendingMatches = pendingRows.filter((payment)=>subIds.has(payment.subscription_id));
+  if (pendingMatches.length === 1) return pendingMatches[0];
+  if (pendingMatches.length > 1) throw new Error("Multiple pending community renewals match this phone; refusing to assign the sale to the wrong community.");
+  const eligible = subs.filter((sub)=>["active","grace_period","expired","cancelled"].includes(sub.status));
+  if (eligible.length !== 1) throw new Error("The buyer has multiple community subscriptions and this Kursinha sale cannot be safely assigned.");
+  const sub = eligible[0];
   const created = await sb("payments",{
     method:"POST",
-    body:JSON.stringify([{member_id:members[0].id,subscription_id:sub.id,amount:1000,currency:"AOA",payment_type:"renewal",provider:"kursinha",provider_reference:saleId,payment_reference:"KUR-"+String(saleId).replace(/[^a-zA-Z0-9_-]/g,"").slice(-24),idempotency_key:"kursinha:"+saleId,status:event==="sale.cancelled"?"cancelled":"pending",metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL,sale_id:saleId,order_id:data?.orderId || null,buyer_id:data?.buyer?.id || null}}]),
+    body:JSON.stringify([{member_id:member.id,subscription_id:sub.id,amount:1000,currency:"AOA",payment_type:"renewal",provider:"kursinha",provider_reference:saleId,payment_reference:"KUR-"+String(saleId).replace(/[^a-zA-Z0-9_-]/g,"").slice(-24),idempotency_key:"kursinha:"+saleId,status:event==="sale.cancelled"?"cancelled":"pending",metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL,sale_id:saleId,order_id:data?.orderId || null,buyer_id:data?.buyer?.id || null}}]),
     headers:{Prefer:"return=representation"},
   });
   return created[0];
 }
-
 async function handleKursinhaWebhook(request) {
   if (!KURSINHA_SECRET) return json(503,{message:"Webhook Kursinha ainda não está configurado no servidor."});
   const raw = await request.text();
