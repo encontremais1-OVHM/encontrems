@@ -644,7 +644,7 @@ function verifyKursinhaSignature(rawBody, header) {
 }
 
 async function resolveKursinhaPayment(data, saleId, event) {
-  const bySale = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&provider=eq.kursinha&provider_reference=eq."+encodeURIComponent(saleId)+"&limit=1");
+  const bySale = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata,created_at&provider=eq.kursinha&provider_reference=eq."+encodeURIComponent(saleId)+"&limit=1");
   if (bySale[0]) return bySale[0];
   const phone = digits(data?.buyer?.phone);
   if (!/^\d{8,15}$/.test(phone)) throw new Error("Kursinha buyer phone is missing or invalid.");
@@ -654,7 +654,7 @@ async function resolveKursinhaPayment(data, saleId, event) {
   const subs = await sb("subscriptions?select=id,member_id,community_id,plan_id,status,starts_at,expires_at,grace_ends_at&member_id=eq."+member.id+"&order=created_at.desc&limit=100");
   if (!subs.length) throw new Error("No Encontre+ subscription matches the Kursinha buyer.");
   const subIds = new Set(subs.map((sub)=>sub.id));
-  const pendingRows = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata&member_id=eq."+member.id+"&provider=eq.kursinha&payment_type=eq.renewal&status=in.(initiated,pending,under_review)&order=created_at.desc&limit=100");
+  const pendingRows = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata,created_at&member_id=eq."+member.id+"&provider=eq.kursinha&payment_type=eq.renewal&status=in.(initiated,pending,under_review)&order=created_at.desc&limit=100");
   const pendingMatches = pendingRows.filter((payment)=>subIds.has(payment.subscription_id));
   if (pendingMatches.length === 1) return pendingMatches[0];
   if (pendingMatches.length > 1) throw new Error("Multiple pending community renewals match this phone; refusing to assign the sale to the wrong community.");
@@ -710,11 +710,14 @@ async function handleKursinhaWebhook(request) {
       await sb("payments?id=eq."+payment.id,{method:"PATCH",body:JSON.stringify({provider:"kursinha",provider_reference:saleId,status:"cancelled",payment_method:data?.payment?.method || null,metadata,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
       await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:payment.member_id,action:"renewal.payment_cancelled",entity_type:"payment",entity_id:payment.id,old_values:{status:payment.status},new_values:{status:"cancelled",sale_id:saleId,was_paid:wasPaid}}]),headers:{Prefer:"return=minimal"}});
       if (wasPaid && payment.subscription_id) {
+        const newerPaid=await sb("payments?select=id&subscription_id=eq."+payment.subscription_id+"&provider=eq.kursinha&payment_type=eq.renewal&status=eq.paid&created_at=gt."+encodeURIComponent(payment.created_at || nowIso)+"&limit=1");
         const subs=await sb("subscriptions?select=id,status,expires_at&id=eq."+payment.subscription_id+"&limit=1");
         const sub=subs[0];
-        if (sub) {
+        if (sub && !newerPaid.length) {
           await sb("subscriptions?id=eq."+sub.id,{method:"PATCH",body:JSON.stringify({status:"cancelled",grace_ends_at:nowIso,ended_at:nowIso,updated_at:nowIso}),headers:{Prefer:"return=minimal"}});
           await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:payment.member_id,action:"subscription.cancelled_after_kursinha_refund",entity_type:"subscription",entity_id:sub.id,old_values:{status:sub.status,expires_at:sub.expires_at},new_values:{status:"cancelled",ended_at:nowIso,sale_id:saleId}}]),headers:{Prefer:"return=minimal"}});
+        } else if (sub && newerPaid.length) {
+          await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:payment.member_id,action:"renewal.refund_did_not_revoke_newer_paid_access",entity_type:"subscription",entity_id:sub.id,old_values:{status:sub.status},new_values:{status:sub.status,newer_paid_payment_id:newerPaid[0].id,cancelled_sale_id:saleId}}]),headers:{Prefer:"return=minimal"}});
         }
       }
     }
