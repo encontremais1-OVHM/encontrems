@@ -156,6 +156,7 @@ function MembersPage() {
               <TableHead className="hidden lg:table-cell">Inscrição</TableHead>
               <TableHead>Assinatura</TableHead>
               <TableHead className="hidden md:table-cell">Vencimento</TableHead>
+              <TableHead className="hidden md:table-cell">Dias restantes</TableHead>
               <TableHead className="hidden sm:table-cell">Acesso</TableHead>
             </TableRow>
           </TableHeader>
@@ -163,7 +164,7 @@ function MembersPage() {
             {configured && query.isPending
               ? Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((__, j) => (
+                    {Array.from({ length: 9 }).map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full max-w-28" />
                       </TableCell>
@@ -183,6 +184,9 @@ function MembersPage() {
                       <SubscriptionBadge status={m.subscription_status} />
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{formatDate(m.due_at)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground tabular-nums">
+                      {m.days_remaining > 0 ? `${m.days_remaining} dias` : m.grace_days_remaining > 0 ? `Tolerância: ${m.grace_days_remaining} dias` : "Expirado"}
+                    </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <AccessBadge status={m.access_status} />
                     </TableCell>
