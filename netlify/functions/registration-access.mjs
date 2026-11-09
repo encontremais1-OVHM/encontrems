@@ -56,7 +56,7 @@ async function audit(memberId, membershipId, action, details) {
 
 function participantMatches(participants, phone) {
   return (participants || []).some((participant) => {
-    const jid = String(participant.jid || participant.id || "");
+    const jid = String(participant.jid || participant.phoneNumber || participant.id || "");
     return digits(jid.split("@")[0].split(":")[0]) === phone;
   });
 }
