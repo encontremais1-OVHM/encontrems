@@ -199,8 +199,9 @@ async function adminResource(resource) {
     return {data:subscriptions.filter((sub)=>memberById.has(sub.member_id)).map((sub)=>{
       const member = memberById.get(sub.member_id);
       const selected = memberships.filter((membership)=>membership.member_id===member.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="subgroup" && group.community_id===sub.community_id));
-      const main = memberships.find((membership)=>membership.member_id===member.id && membership.status==="joined" && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="community" && group.community_id===sub.community_id));
-      return {...member,subscription_id:sub.id,community_name:communities.find((community)=>community.id===sub.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>({name:groups.find((g)=>g.id===membership.whatsapp_group_id)?.name || "Grupo",status:membership.status})),community_access:main?"joined":"pending",subscription_status:sub.status || "sem_subscrição",expires_at:sub.expires_at || null,created_at:sub.created_at || member.created_at};
+      const main = memberships.find((membership)=>membership.member_id===member.id && groups.some((group)=>group.id===membership.whatsapp_group_id && group.group_type==="community" && group.community_id===sub.community_id));
+      const communityAccess = main?.status === "joined" ? "joined" : main?.status === "removed" ? "removed" : main?.status === "failed" ? "failed" : main?.status === "removal_pending" ? "removal_pending" : "pending";
+      return {...member,subscription_id:sub.id,community_name:communities.find((community)=>community.id===sub.community_id)?.name || "—",selected_subgroups:selected.map((membership)=>({name:groups.find((g)=>g.id===membership.whatsapp_group_id)?.name || "Grupo",status:membership.status})),community_access:communityAccess,subscription_status:sub.status || "sem_subscrição",expires_at:sub.expires_at || null,created_at:sub.created_at || member.created_at};
     })};
   }
   if (resource === "notifications") {
@@ -452,14 +453,15 @@ async function adminMembers(q) {
       operation.whatsapp_group_id === communityGroup.id &&
       operation.operation_type === "add" &&
       operation.status === "failed" &&
-      String(operation.idempotency_key || "").startsWith("renewal-add:")
+(String(operation.idempotency_key || "").startsWith("renewal-add:") || String(operation.idempotency_key || "").startsWith("registration-add:"))
     );
     let accessStatus = "none";
     if (communityMembership?.status === "joined") accessStatus = "active";
     else if (communityMembership?.status === "removal_pending") accessStatus = "removal_pending";
     else if (communityMembership?.status === "removed") accessStatus = "removed";
     else if (communityOperationFailed) accessStatus = "failed";
-    else if (communityMembership?.status === "pending_invitation") accessStatus = "pending";
+    else if (communityMembership?.status === "pending_invitation" || communityMembership?.status === "invited") accessStatus = "pending";
+    else if (communityMembership?.status === "failed") accessStatus = "failed";
     const daysRemaining = due ? Math.max(0, Math.ceil((new Date(due).getTime() - Date.now()) / 86400000)) : 0;
     const graceDaysRemaining = sub?.grace_ends_at ? Math.max(0, Math.ceil((new Date(sub.grace_ends_at).getTime() - Date.now()) / 86400000)) : 0;
     return {
