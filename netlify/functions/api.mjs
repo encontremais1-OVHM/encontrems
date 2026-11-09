@@ -782,7 +782,7 @@ export default async (request) => {
     if (path === "/admin/dashboard" && method === "GET") return json(200,await adminDashboard());
     const resourceMatch = path.match(/^\/admin\/resources\/(subscriptions|audit|communities|access|registrations|notifications|plans|users|reports)$/);
     if (resourceMatch && method === "GET") return json(200,await adminResource(resourceMatch[1]));
-    const manualRemove = path.match(/^\\/admin\\/members\\/([0-9a-f-]{36})\\/remove$/i);
+    const manualRemove = path.match(/^\/admin\/members\/([0-9a-f-]{36})\/remove$/i);
     if (manualRemove && method === "POST") {
       const memberId = manualRemove[1];
       const memberRows = await sb("members?select=id,full_name&id=eq." + memberId + "&limit=1");
