@@ -190,7 +190,12 @@ function EstadoPage() {
               )}
             </section>
 
-            <WhatsAppAccess links={inviteLinks(data)} subgroupNames={data.subgroups?.map((group) => group.name) || []} />
+            <WhatsAppAccess
+              links={inviteLinks(data)}
+              subgroupNames={data.subgroups?.map((group) => group.name) || []}
+              communityStatus={data.access?.community || "pending"}
+              groups={data.access?.groups || []}
+            />
 
             {data.subscription?.due_at && Date.now() >= new Date(data.subscription.due_at).getTime() - 7 * 86400000 && data.payment?.status !== "pending" && data.status === "approved" && (
               <section className="rounded-2xl border bg-card p-5 shadow-card">
@@ -226,9 +231,11 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ links, subgroupNames }: {
+function WhatsAppAccess({ links, subgroupNames, communityStatus, groups }: {
   links: { community: string | null; subgroup: string | null; subgroups:Array<{id:string;name:string;url:string}> };
   subgroupNames: string[];
+  communityStatus: string;
+  groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
 }) {
   if (!links.community) return null;
   return (
@@ -239,18 +246,36 @@ function WhatsAppAccess({ links, subgroupNames }: {
       <p className="mt-1 text-sm text-muted-foreground">
         Entre primeiro na Comunidade. Depois, dentro do WhatsApp, abra a lista de grupos e escolha os subgrupos em que pretende participar.
       </p>
+      <p className="mt-3 text-sm text-foreground">
+        Estado da Comunidade: <span className="font-semibold">{communityStatus === "active" ? "Entrada confirmada" : "Ainda não confirmada"}</span>
+      </p>
       {subgroupNames.length > 0 && (
-        <p className="mt-3 text-sm text-foreground">
-          Subgrupos indicados na inscrição: <span className="font-semibold">{subgroupNames.join(", ")}</span>.
-        </p>
+        <div className="mt-3 rounded-lg border px-3 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grupos seleccionados / detectados</p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {subgroupNames.map((name) => {
+              const group = groups.find((item) => item.name === name);
+              return <li key={name} className="flex items-center justify-between gap-3">
+                <span>{name}</span>
+                <span className={group?.status === "joined" ? "font-semibold text-success" : "text-muted-foreground"}>
+                  {group?.status === "joined" ? "Entrada confirmada" : group?.status === "removed" ? "Saiu do grupo" : "A aguardar entrada"}
+                </span>
+              </li>;
+            })}
+          </ul>
+        </div>
       )}
-      <div className="mt-4">
-        <Button asChild>
-          <a href={links.community} target="_blank" rel="noopener noreferrer">
-            Abrir WhatsApp e entrar na Comunidade
-          </a>
-        </Button>
-      </div>
+      {links.community ? (
+        <div className="mt-4">
+          <Button asChild>
+            <a href={links.community} target="_blank" rel="noopener noreferrer">
+              Abrir WhatsApp e entrar na Comunidade
+            </a>
+          </Button>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-amber-700">O convite ainda não está disponível. Actualize o estado mais tarde ou contacte a equipa Encontre +.</p>
+      )}
     </section>
   );
 }
