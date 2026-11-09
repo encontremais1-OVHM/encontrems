@@ -202,6 +202,10 @@ function InscricaoPage() {
     if (!community || !firstSubgroup || !normalizedPhone) return;
     setSubmitError(null);
     setSubmitting(true);
+    // Open a blank tab synchronously from the user's click so browsers do not
+    // block the WhatsApp redirect after the asynchronous registration call.
+    const inviteWindow = window.open("about:blank", "_blank");
+    if (inviteWindow) inviteWindow.opener = null;
     try {
       const res = await createRegistration({
         community_id: community.id,
@@ -214,9 +218,15 @@ function InscricaoPage() {
         city: form.city.trim(),
         interests: form.interests,
       });
+      if (res.access?.community_invite_url && inviteWindow) {
+        inviteWindow.location.replace(res.access.community_invite_url);
+      } else {
+        inviteWindow?.close();
+      }
       setReceipt(res);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
+      inviteWindow?.close();
       if (err instanceof ApiError && err.status === 422 && err.body && typeof err.body === "object") {
         const apiErrors = (err.body as { errors?: Record<string, string[]> }).errors ?? {};
         const mapped: FieldErrors = {};

@@ -423,15 +423,19 @@ async function adminMembers(q) {
     );
     let accessStatus = "none";
     if (communityMembership?.status === "joined") accessStatus = "active";
-    else if (communityMembership?.status === "pending_invitation") accessStatus = "pending";
     else if (communityMembership?.status === "removal_pending") accessStatus = "removal_pending";
     else if (communityMembership?.status === "removed") accessStatus = "removed";
     else if (communityOperationFailed) accessStatus = "failed";
+    else if (communityMembership?.status === "pending_invitation") accessStatus = "pending";
+    const daysRemaining = due ? Math.max(0, Math.ceil((new Date(due).getTime() - Date.now()) / 86400000)) : 0;
+    const graceDaysRemaining = sub?.grace_ends_at ? Math.max(0, Math.ceil((new Date(sub.grace_ends_at).getTime() - Date.now()) / 86400000)) : 0;
     return {
       id: m.id, full_name: m.full_name, whatsapp: m.phone_e164 || m.phone, email: m.email,
       province: m.province || "", city: m.city || "", registered_at: m.created_at,
       subscription_status: !sub ? null : (sub.grace_ends_at && new Date(sub.grace_ends_at).getTime() < Date.now() ? "expired" : (sub.expires_at && new Date(sub.expires_at).getTime() <= Date.now() ? "grace_period" : sub.status)),
       due_at: due,
+      days_remaining: daysRemaining,
+      grace_days_remaining: graceDaysRemaining,
       access_status: accessStatus,
     };
   });
@@ -906,54 +910,41 @@ export default async (request) => {
       ];
       const accessResults = [];
       let waConnected = false;
-      try { waConnected = (await bridge("/status")).connected === true; } catch { /* access remains pending until WhatsApp is available */ }
-      // Never trust the invite_link cached in Supabase: WhatsApp can revoke/reset
-      // a Community invite code independently. Fetch the current code at the
-      // moment the registration receipt is created.
+      try { waConnected = (await bridge("/status")).connected === true; } catch { /* invitation remains pending */ }
+      // The member joins the parent Community through its invite link, then
+      // chooses linked subgroups inside WhatsApp. Never force-add people to
+      // the Community or its subgroups from the registration request.
       let currentCommunityInvite = null;
       if (waConnected && mainGroups[0]?.external_group_id) {
         try {
           currentCommunityInvite = (await bridge("/communities/" + encodeURIComponent(mainGroups[0].external_group_id) + "/invite-link")).invite_link || null;
-        } catch { /* no stale fallback: keep the invitation pending until refreshed */ }
+        } catch { /* the connected account must be an admin of the parent Community */ }
       }
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status,external_participant_id&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
         if (!membership) {
-          const inserted = await sb("group_memberships",{method:"POST",body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",status:"pending_invitation"}]),headers:{Prefer:"return=representation"}});
+          const inserted = await sb("group_memberships", {
+            method:"POST",
+            body:JSON.stringify([{member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",status:"pending_invitation"}]),
+            headers:{Prefer:"return=representation"},
+          });
           membership = inserted[0];
+        } else if (membership.status !== "joined") {
+          await sb("group_memberships?id=eq."+membership.id, {
+            method:"PATCH",
+            body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",removed_at:null,updated_at:iso(new Date())}),
+            headers:{Prefer:"return=minimal"},
+          });
         }
-        let accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
-        if (accessStatus !== "joined") {
-          const idempotencyKey = "registration-add:" + subscriptionId + ":" + target.group.id;
-          const existingOps = await sb("access_operations?select=id,status,attempts&idempotency_key=eq." + encodeURIComponent(idempotencyKey) + "&limit=1");
-          let operation = existingOps[0];
-          if (!operation) {
-            const createdOps = await sb("access_operations", {
-              method: "POST",
-              body: JSON.stringify([{ member_id: member.id, whatsapp_group_id: target.group.id, operation_type: "add", status: "queued", idempotency_key: idempotencyKey, attempts: 0 }]),
-              headers: { Prefer: "return=representation" },
-            });
-            operation = createdOps[0];
-          }
-          if (waConnected && target.group.external_group_id && operation) {
-            const attempt = Number(operation.attempts || 0) + 1;
-            await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "processing", attempts: attempt, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
-            try {
-              await bridge(target.kind === "community" ? "/communities/"+encodeURIComponent(target.group.external_group_id)+"/participants/add" : "/groups/"+encodeURIComponent(target.group.external_group_id)+"/participants/add","POST",{phone});
-              accessStatus = "joined";
-              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
-              await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "succeeded", executed_at: iso(new Date()), last_error: null, next_retry_at: null, updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
-            } catch (error) {
-              const message = error instanceof Error ? error.message.slice(0, 300) : "Não foi possível adicionar o participante ao grupo.";
-              await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
-              await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "retry_pending", last_error: message, next_retry_at: iso(new Date(Date.now() + 15 * 60 * 1000)), updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
-            }
-          } else if (operation) {
-            await sb("access_operations?id=eq." + operation.id, { method: "PATCH", body: JSON.stringify({ status: "retry_pending", last_error: "WhatsApp indisponível ou grupo sem identificador externo.", next_retry_at: iso(new Date(Date.now() + 15 * 60 * 1000)), updated_at: iso(new Date()) }), headers: { Prefer: "return=minimal" } });
-          }
-        }
-        accessResults.push({id:target.group.id,name:target.group.name,kind:target.kind,status:accessStatus,invite_url:target.kind === "community" ? currentCommunityInvite : null});
+        const accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
+        accessResults.push({
+          id:target.group.id,
+          name:target.group.name,
+          kind:target.kind,
+          status:accessStatus,
+          invite_url:target.kind === "community" ? currentCommunityInvite : null,
+        });
       }
       const communityAccess = accessResults.find((item)=>item.kind==="community");
       const subgroupAccess = accessResults.filter((item)=>item.kind==="subgroup");
@@ -1053,7 +1044,7 @@ export default async (request) => {
         subgroups:selectedSubgroups.map((g)=>({name:g.name,slug:g.id})),
         payment,
         subscription:{status:sub.status,due_at:sub.expires_at},
-        access:{community:communityJoined || communityInvite ? "active" : "pending",subgroup:subgroupAccessReady ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite,subgroup_invite_urls:subgroupInviteUrls},
+        access:{community:communityJoined ? "active" : "pending",subgroup:subgroupAccessReady ? "active" : "pending",community_invite_url:communityInvite,subgroup_invite_url:subgroupInvite,subgroup_invite_urls:subgroupInviteUrls},
         rejection_reason:null,
       });
     }

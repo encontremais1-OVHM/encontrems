@@ -51,6 +51,17 @@ async function processPendingAdditions(now, nowIso) {
     ]);
     const group = groups[0];
     const membership = memberships[0];
+    // New members enter through the parent Community invite and choose
+    // subgroups themselves. Retire legacy force-add operations instead of
+    // repeatedly trying to add members to individual WhatsApp groups.
+    if (group?.is_active && group.group_type === "subgroup") {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled", last_error: "O membro escolhe este subgrupo directamente dentro da Comunidade WhatsApp.", next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      continue;
+    }
     if (!group || !membership || !group.is_active) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",

@@ -36,6 +36,8 @@ export interface Member {
   registered_at: string;
   subscription_status: SubscriptionStatus | null;
   due_at: string | null;
+  days_remaining: number;
+  grace_days_remaining: number;
   access_status: AccessStatus;
 }
 
