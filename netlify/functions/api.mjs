@@ -398,7 +398,7 @@ async function adminMembers(q) {
     sb("subscriptions?select=member_id,community_id,status,expires_at,grace_ends_at&order=created_at.desc"),
     sb("group_memberships?select=member_id,whatsapp_group_id,status"),
     sb("whatsapp_groups?select=id,community_id,group_type,is_active"),
-    sb("access_operations?select=member_id,whatsapp_group_id,operation_type,status"),
+    sb("access_operations?select=member_id,whatsapp_group_id,operation_type,status,idempotency_key"),
   ]);
   const latestSub = new Map();
   for (const s of subscriptions) if (!latestSub.has(s.member_id)) latestSub.set(s.member_id,s);
@@ -419,7 +419,8 @@ async function adminMembers(q) {
       operation.member_id === m.id &&
       operation.whatsapp_group_id === communityGroup.id &&
       operation.operation_type === "add" &&
-      operation.status === "failed"
+      operation.status === "failed" &&
+      String(operation.idempotency_key || "").startsWith("renewal-add:")
     );
     let accessStatus = "none";
     if (communityMembership?.status === "joined") accessStatus = "active";
