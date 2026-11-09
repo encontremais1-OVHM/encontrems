@@ -174,7 +174,7 @@ async function adminResource(resource) {
   }
   if (resource === "notifications") {
     const [rows,members] = await Promise.all([
-      sb("notifications?select=id,member_id,notification_type,channel,message,status,sent_at,error_message,created_at&order=created_at.desc&limit=500"),
+      sb("notifications?select=id,member_id,notification_type,channel,message,status,sent_at,error_message,metadata,created_at&order=created_at.desc&limit=500"),
       sb("members?select=id,full_name,phone_e164,phone"),
     ]);
     return {data:rows.map((n)=>({...n,member_name:members.find((m)=>m.id===n.member_id)?.full_name || "Geral"}))};
@@ -448,7 +448,7 @@ async function adminMembers(q) {
 
 async function adminPayments() {
   const [payments,members] = await Promise.all([
-    sb("payments?select=id,member_id,subscription_id,amount,currency,status,payment_reference,payment_type,provider,created_at,paid_at,rejection_reason&order=created_at.desc&limit=500"),
+    sb("payments?select=id,member_id,subscription_id,amount,currency,status,payment_reference,payment_type,provider,provider_reference,created_at,paid_at,rejection_reason,metadata&order=created_at.desc&limit=500"),
     sb("members?select=id,full_name,phone_e164,phone,email"),
   ]);
   return {data:payments.map((p)=>({
@@ -864,7 +864,7 @@ export default async (request) => {
         const referenceCode = "EN-R-" + crypto.randomUUID().slice(0,8).toUpperCase();
         const createdPayment = await sb("payments",{
           method:"POST",
-          body:JSON.stringify([{member_id:member.id,subscription_id:subscriptionId,amount:1000,currency:"AOA",payment_type:"renewal",provider:"kursinha",status:"pending",payment_reference:referenceCode,idempotency_key:"renewal:"+subscriptionId+":"+cycleKey,metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL}}]),
+          body:JSON.stringify([{member_id:member.id,subscription_id:subscriptionId,amount:1000,currency:"AOA",payment_type:"renewal",provider:"kursinha",status:"pending",payment_reference:referenceCode,idempotency_key:"renewal:"+subscriptionId+":"+cycleKey+":"+String(renewals.length+1),metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL}}]),
           headers:{Prefer:"return=representation"},
         });
         return json(201,{reference:subscriptionId,status:"pending_payment",payment:{reference:createdPayment[0].payment_reference,amount_kz:Number(createdPayment[0].amount),status:"pending",instructions:[],checkout_url:KURSINHA_CHECKOUT_URL,proof_upload_enabled:false,proof_submitted_at:null}});
@@ -954,20 +954,25 @@ export default async (request) => {
       const plans = await sb("plans?select=renewal_price,duration_days,grace_days&id=eq."+sub.plan_id+"&limit=1");
       const plan = plans[0];
       if (!plan || Number(plan.renewal_price) !== 1000) return json(409,{message:"O preço de renovação não está configurado para 1.000 Kz."});
-      const renewals = await sb("payments?select=id,payment_reference,amount,status&subscription_id=eq."+sub.id+"&payment_type=eq.renewal&order=created_at.desc&limit=50");
+      const expiresAt = sub.expires_at ? new Date(sub.expires_at).getTime() : 0;
+      if (!["expired","grace_period"].includes(sub.status) && expiresAt > Date.now() + 3 * 86400000) return json(409,{message:"A renovação estará disponível nos últimos 3 dias do acesso."});
+      if (!KURSINHA_PRODUCT_ID || !KURSINHA_CHECKOUT_URL) return json(503,{message:"O pagamento Kursinha ainda não está configurado."});
+      const renewals = await sb("payments?select=id,payment_reference,amount,status,metadata&subscription_id=eq."+sub.id+"&provider=eq.kursinha&payment_type=eq.renewal&order=created_at.desc&limit=50");
       const pending = renewals.find((p)=>["pending","under_review","initiated"].includes(p.status));
-      if (pending) return json(200,{reference:sub.id,status:"pending",payment:{reference:pending.payment_reference,amount_kz:Number(pending.amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+      if (pending) return json(200,{reference:sub.id,status:"pending",payment:{reference:pending.payment_reference,amount_kz:Number(pending.amount),status:"pending",instructions:[],checkout_url:pending.metadata?.checkout_url || KURSINHA_CHECKOUT_URL,proof_upload_enabled:false,proof_submitted_at:null}});
+      const cycleKey = String(sub.expires_at || "initial").replace(/[^0-9]/g,"");
       const referenceCode = "EN-R-" + crypto.randomUUID().slice(0,8).toUpperCase();
-      const idempotencyKey = "renewal:" + sub.id + ":" + (renewals.length+1);
+      const idempotencyKey = "renewal:" + sub.id + ":" + cycleKey + ":" + String(renewals.length+1);
       const created = await sb("payments",{
         method:"POST",
         body:JSON.stringify([{
           member_id:sub.member_id,subscription_id:sub.id,amount:1000,currency:"AOA",payment_type:"renewal",
-          provider:"manual",status:"pending",payment_reference:referenceCode,idempotency_key:idempotencyKey,
+          provider:"kursinha",status:"pending",payment_reference:referenceCode,idempotency_key:idempotencyKey,
+          metadata:{product_id:KURSINHA_PRODUCT_ID,checkout_url:KURSINHA_CHECKOUT_URL},
         }]),
         headers:{Prefer:"return=representation"},
       });
-      return json(201,{reference:sub.id,status:"pending",payment:{reference:created[0].payment_reference,amount_kz:Number(created[0].amount),status:"pending",instructions:[],checkout_url:null,proof_upload_enabled:false,proof_submitted_at:null}});
+      return json(201,{reference:sub.id,status:"pending",payment:{reference:created[0].payment_reference,amount_kz:Number(created[0].amount),status:"pending",instructions:[],checkout_url:KURSINHA_CHECKOUT_URL,proof_upload_enabled:false,proof_submitted_at:null}});
     }
     if (path.startsWith("/public/registrations/") && method === "GET") {
       const reference = path.slice("/public/registrations/".length);
