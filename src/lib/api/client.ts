@@ -1,4 +1,5 @@
 import { isApiConfigured } from "../config";
+import { getValidAccessToken } from "../supabase-auth";
 
 export class ApiNotConfiguredError extends Error {
   constructor() {
@@ -40,27 +41,33 @@ function buildUrl(path: string, query?: Query) {
 /** Same-origin API. Privileged Supabase and WhatsApp secrets never reach the browser. */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   if (!isApiConfigured()) throw new ApiNotConfiguredError();
-  const headers: Record<string, string> = { Accept: "application/json" };
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
-  if (options.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("encontre.supabase.session") : null;
-  if (options.auth !== false && token) {
-    try {
-      const session = JSON.parse(token) as { access_token?: string };
-      if (session.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-    } catch {
-      // Auth guard will redirect if the stored session is malformed.
-    }
-  }
+  const makeHeaders = (token: string | null) => {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (options.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
+    if (options.auth !== false && token) headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+  };
+  const requestInit = (token: string | null): RequestInit => ({
+    method: options.method ?? "GET",
+    headers: makeHeaders(token),
+    body: options.body === undefined ? null : isForm ? options.body as FormData : JSON.stringify(options.body),
+    signal: options.signal ?? null,
+  });
 
+  let token = options.auth === false ? null : await getValidAccessToken();
   let response: Response;
   try {
-    response = await fetch(buildUrl(path, options.query), {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body === undefined ? null : isForm ? options.body as FormData : JSON.stringify(options.body),
-      signal: options.signal ?? null,
-    });
+    response = await fetch(buildUrl(path, options.query), requestInit(token));
+    // A token can be revoked/expire between requests. Refresh once and retry
+    // the exact same request; refreshSession is single-flight across callers.
+    if (response.status === 401 && options.auth !== false && token) {
+      const refreshedToken = await getValidAccessToken(true);
+      if (refreshedToken && refreshedToken !== token) {
+        token = refreshedToken;
+        response = await fetch(buildUrl(path, options.query), requestInit(token));
+      }
+    }
   } catch {
     throw new ApiError(0, "Não foi possível contactar a API segura da aplicação.", null);
   }
