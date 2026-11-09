@@ -239,17 +239,18 @@ function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authori
   groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
   authorized: boolean;
 }) {
-  if (!authorized || communityStatus === "active") return null;
+  const allSubgroupsJoined = subgroupNames.length > 0 && subgroupNames.every((name) => groups.some((group) => group.name === name && group.status === "joined"));
+  if (!authorized || (communityStatus === "active" && allSubgroupsJoined)) return null;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
       <p className="flex items-center gap-2 font-display text-lg font-extrabold text-foreground">
-        <MessageCircle className="size-5 text-success" /> Convite para a Comunidade WhatsApp
+        <MessageCircle className="size-5 text-success" /> Acesso à Comunidade e aos subgrupos
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Entre primeiro na Comunidade. Depois, dentro do WhatsApp, abra a lista de grupos e escolha os subgrupos em que pretende participar.
+        A Encontre + está a confirmar a tua entrada directamente através do WhatsApp. A entrada só será considerada concluída depois de o número aparecer como participante.
       </p>
       <p className="mt-3 text-sm text-foreground">
-        Estado da Comunidade: <span className="font-semibold">{communityStatus === "active" ? "Entrada confirmada" : "Ainda não confirmada"}</span>
+        Estado da Comunidade: <span className="font-semibold">{communityStatus === "active" ? "Entrada confirmada" : "A aguardar confirmação do WhatsApp"}</span>
       </p>
       {subgroupNames.length > 0 && (
         <div className="mt-3 rounded-lg border px-3 py-3">
@@ -260,14 +261,14 @@ function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authori
               return <li key={name} className="flex items-center justify-between gap-3">
                 <span>{name}</span>
                 <span className={group?.status === "joined" ? "font-semibold text-success" : "text-muted-foreground"}>
-                  {group?.status === "joined" ? "Entrada confirmada" : group?.status === "removed" ? "Saiu do grupo" : "A aguardar entrada"}
+                  {group?.status === "joined" ? "Entrada confirmada" : group?.status === "removed" ? "Saiu do grupo" : group?.status === "failed" ? "Adição não concluída" : group?.status === "invited" ? "A confirmar entrada" : "A aguardar entrada"}
                 </span>
               </li>;
             })}
           </ul>
         </div>
       )}
-      {links.community ? (
+      {communityStatus !== "active" && links.community ? (
         <div className="mt-4">
           <Button asChild>
             <a href={links.community} target="_blank" rel="noopener noreferrer">
@@ -276,7 +277,7 @@ function WhatsAppAccess({ links, subgroupNames, communityStatus, groups, authori
           </Button>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-amber-700">O convite ainda não está disponível. Actualize o estado mais tarde ou contacte a equipa Encontre +.</p>
+        <p className="mt-4 text-sm text-amber-700">{communityStatus === "active" ? "A entrada na Comunidade já está confirmada. Os subgrupos seleccionados continuam a ser sincronizados." : "A adição automática ainda não foi confirmada e o convite actualizado não está disponível neste momento. Actualize o estado mais tarde."}</p>
       )}
     </section>
   );
