@@ -37,7 +37,7 @@ async function bridge(path, body) {
 
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
-  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
   const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000)).slice(0, 2);
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
@@ -51,13 +51,13 @@ async function processPendingAdditions(now, nowIso) {
     ]);
     const group = groups[0];
     const membership = memberships[0];
-    // New members enter through the parent Community invite and choose
-    // subgroups themselves. Retire legacy force-add operations instead of
-    // repeatedly trying to add members to individual WhatsApp groups.
-    if (group?.is_active && group.group_type === "subgroup") {
+    // Initial registration is self-service: the member accepts the parent
+    // Community invite and chooses subgroups inside WhatsApp. Only operations
+    // created by an approved renewal may automatically re-add a removed member.
+    if (group?.is_active && !String(operation.idempotency_key || "").startsWith("renewal-add:")) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "cancelled", last_error: "O membro escolhe este subgrupo directamente dentro da Comunidade WhatsApp.", next_retry_at: null, updated_at: nowIso }),
+        body: JSON.stringify({ status: "cancelled", last_error: "A entrada inicial é feita pelo convite da Comunidade; adição automática reservada à reentrada após renovação.", next_retry_at: null, updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       continue;
