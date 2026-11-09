@@ -2,6 +2,8 @@ const SUPABASE_URL = (Netlify.env.get("VITE_SUPABASE_URL") || Netlify.env.get("S
 const SERVICE_KEY = Netlify.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const BRIDGE_URL = (Netlify.env.get("WHATSAPP_BRIDGE_URL") || "").replace(/\/+$/, "");
 const BRIDGE_TOKEN = Netlify.env.get("WHATSAPP_BRIDGE_TOKEN") || "";
+const KURSINHA_PRODUCT_ID = Netlify.env.get("KURSINHA_PRODUCT_ID") || "6aefd6a5531bcee4ede064fb";
+const KURSINHA_CHECKOUT_URL = Netlify.env.get("KURSINHA_CHECKOUT_URL") || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
 
 async function db(path, init = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -61,6 +63,11 @@ async function processPendingAdditions(now, nowIso) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("audit_logs", {
+        method: "POST",
+        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_added_after_renewal", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "pending_invitation" }, new_values: { status: "joined", whatsapp_group_id: operation.whatsapp_group_id, operation_id: operation.id } }]),
         headers: { Prefer: "return=minimal" },
       });
       succeeded++;
@@ -133,6 +140,72 @@ async function processPendingAdditions(now, nowIso) {
   return { succeeded, pending };
 }
 
+
+
+async function processRenewalReminders(now, nowIso) {
+  if (!KURSINHA_PRODUCT_ID || !KURSINHA_CHECKOUT_URL) return { sent: 0, pending: 0 };
+  const windowEnd = iso(new Date(now.getTime() + 3 * 86400000));
+  const due = await db("subscriptions?select=id,member_id,community_id,plan_id,status,expires_at,grace_ends_at&status=eq.active&expires_at=gte." + encodeURIComponent(nowIso) + "&expires_at=lte." + encodeURIComponent(windowEnd) + "&order=expires_at.asc&limit=100");
+  let sent = 0, pending = 0;
+  for (const subscription of due) {
+    try {
+      const plans = await db("plans?select=renewal_price,duration_days,grace_days&id=eq." + subscription.plan_id + "&limit=1");
+      if (!plans[0] || Number(plans[0].renewal_price) !== 1000) continue;
+      const expiryKey = String(new Date(subscription.expires_at).getTime());
+      const idempotencyKey = "renewal:" + subscription.id + ":" + expiryKey;
+      const existingPayments = await db("payments?select=id,payment_reference,status,metadata&subscription_id=eq." + subscription.id + "&payment_type=eq.renewal&provider=eq.kursinha&order=created_at.desc&limit=20");
+      let payment = existingPayments.find((p) => ["initiated","pending","under_review"].includes(p.status)) || existingPayments[0] || null;
+      if (!payment && existingPayments.length === 0) {
+        const paymentReference = "EN-R-" + subscription.id.slice(0,8).toUpperCase() + "-" + expiryKey.slice(-6);
+        const created = await db("payments", {
+          method: "POST",
+          body: JSON.stringify([{
+            member_id: subscription.member_id, subscription_id: subscription.id, amount: 1000, currency: "AOA",
+            payment_type: "renewal", provider: "kursinha", status: "pending", payment_reference: paymentReference,
+            idempotency_key: idempotencyKey,
+            metadata: { product_id: KURSINHA_PRODUCT_ID, checkout_url: KURSINHA_CHECKOUT_URL, expires_at: subscription.expires_at },
+          }]),
+          headers: { Prefer: "return=representation" },
+        });
+        payment = created[0];
+      }
+      const members = await db("members?select=full_name,phone_e164,phone&id=eq." + subscription.member_id + "&limit=1");
+      const member = members[0];
+      const phone = String(member?.phone_e164 || member?.phone || "").replace(/\D/g, "");
+      if (!/^\d{8,15}$/.test(phone)) throw new Error("Número WhatsApp do membro inválido.");
+      const notifications = await db("notifications?select=id,status,metadata&member_id=eq." + subscription.member_id + "&notification_type=eq.renewal_reminder&channel=eq.whatsapp&order=created_at.desc&limit=30");
+      let notification = notifications.find((item) => item.metadata?.subscription_id === subscription.id && item.metadata?.expires_at === subscription.expires_at);
+      if (notification?.status === "sent") continue;
+      const message = "Olá " + (member.full_name || "") + "! O teu acesso à Comunidade Encontre + termina em 3 dias. Para continuares na comunidade e nos teus subgrupos, renova por 1.000 Kz através deste link seguro: " + KURSINHA_CHECKOUT_URL + ". Se já pagaste, aguarda a confirmação automática. Obrigado!";
+      if (!notification) {
+        const created = await db("notifications", {
+          method: "POST",
+          body: JSON.stringify([{
+            member_id: subscription.member_id, notification_type: "renewal_reminder", channel: "whatsapp",
+            message, status: "pending",
+            metadata: { subscription_id: subscription.id, payment_id: payment.id, payment_reference: payment.payment_reference, expires_at: subscription.expires_at, checkout_url: KURSINHA_CHECKOUT_URL },
+          }]),
+          headers: { Prefer: "return=representation" },
+        });
+        notification = created[0];
+      } else {
+        await db("notifications?id=eq." + notification.id, { method: "PATCH", body: JSON.stringify({ status: "pending", message, error_message: null }), headers: { Prefer: "return=minimal" } });
+      }
+      await bridge("/messages/send", { phone, message });
+      await db("notifications?id=eq." + notification.id, { method: "PATCH", body: JSON.stringify({ status: "sent", sent_at: nowIso, error_message: null }), headers: { Prefer: "return=minimal" } });
+      await db("audit_logs", {
+        method: "POST",
+        body: JSON.stringify([{ member_id: subscription.member_id, action: "renewal.reminder_sent", entity_type: "subscription", entity_id: subscription.id, new_values: { notification_id: notification.id, payment_id: payment.id, checkout_url: KURSINHA_CHECKOUT_URL, expires_at: subscription.expires_at } }]),
+        headers: { Prefer: "return=minimal" },
+      });
+      sent++;
+    } catch (error) {
+      pending++;
+      console.warn("Renewal reminder could not be sent:", error instanceof Error ? error.message : "unknown");
+    }
+  }
+  return { sent, pending };
+}
 
 async function syncConfirmedWhatsAppParticipants(nowIso) {
   let connected = false;
@@ -229,11 +302,17 @@ export default async (_request) => {
   const nowIso = iso(now);
   const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);
   const additions = await processPendingAdditions(now, nowIso);
+  const reminders = await processRenewalReminders(now, nowIso);
+  const enteringGrace = await db("subscriptions?select=id,member_id,status,expires_at,grace_ends_at&status=eq.active&expires_at=lt." + encodeURIComponent(nowIso) + "&grace_ends_at=gte." + encodeURIComponent(nowIso) + "&limit=500");
+  for (const subscription of enteringGrace) {
+    await db("subscriptions?id=eq." + subscription.id, { method: "PATCH", body: JSON.stringify({ status: "grace_period", updated_at: nowIso }), headers: { Prefer: "return=minimal" } });
+    await db("audit_logs", { method: "POST", body: JSON.stringify([{ member_id: subscription.member_id, action: "subscription.grace_period_started", entity_type: "subscription", entity_id: subscription.id, old_values: { status: "active", expires_at: subscription.expires_at }, new_values: { status: "grace_period", grace_ends_at: subscription.grace_ends_at } }]), headers: { Prefer: "return=minimal" } });
+  }
   const expired = await db(
-    "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
+    "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired,cancelled)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
   );
 
-  if (!expired.length) return Response.json({ ok: true, participant_sync_groups: participantSync.groups_checked, memberships_confirmed: participantSync.memberships_confirmed, additions_succeeded: additions.succeeded, additions_pending: additions.pending, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
+  if (!expired.length) return Response.json({ ok: true, participant_sync_groups: participantSync.groups_checked, memberships_confirmed: participantSync.memberships_confirmed, additions_succeeded: additions.succeeded, additions_pending: additions.pending, renewal_reminders_sent: reminders.sent, renewal_reminders_pending: reminders.pending, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
 
   let removalsSucceeded = 0;
   let removalsPending = 0;
@@ -360,6 +439,11 @@ export default async (_request) => {
           body: JSON.stringify({ status: "succeeded", executed_at: nowIso, last_error: null, updated_at: nowIso }),
           headers: { Prefer: "return=minimal" },
         });
+        await db("audit_logs", {
+          method: "POST",
+          body: JSON.stringify([{ member_id: membership.member_id, action: "whatsapp.member_removed_after_expiry", entity_type: "group_membership", entity_id: membership.id, old_values: { status: membership.status }, new_values: { status: "removed", whatsapp_group_id: membership.whatsapp_group_id, subscription_id: subscription.id, operation_id: operation.id } }]),
+          headers: { Prefer: "return=minimal" },
+        });
         removalsSucceeded++;
       } catch (error) {
         const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp removal failed";
@@ -374,7 +458,7 @@ export default async (_request) => {
       }
     }
 
-    if (subscription.status !== "expired") {
+    if (!["expired", "cancelled"].includes(subscription.status)) {
       await db("subscriptions?id=eq." + subscription.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "expired", ended_at: nowIso, updated_at: nowIso }),
@@ -403,6 +487,8 @@ export default async (_request) => {
     removals_succeeded: removalsSucceeded,
     additions_succeeded: additions.succeeded,
     additions_pending: additions.pending,
+    renewal_reminders_sent: reminders.sent,
+    renewal_reminders_pending: reminders.pending,
     removals_pending: removalsPending,
   });
 };

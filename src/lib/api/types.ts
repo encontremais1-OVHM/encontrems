@@ -13,7 +13,7 @@ export type SubscriptionStatus =
   | "suspended"
   | "cancelled";
 
-export type PaymentStatus = "pending" | "confirmed" | "rejected";
+export type PaymentStatus = "pending" | "confirmed" | "rejected" | "cancelled";
 
 export type AccessStatus = "none" | "pending" | "active" | "removal_pending" | "removed" | "failed";
 

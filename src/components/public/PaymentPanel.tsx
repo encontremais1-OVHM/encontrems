@@ -56,13 +56,26 @@ export function PaymentPanel({
     <section className="rounded-2xl border bg-card p-5 shadow-card sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{payment.amount_kz === 0 ? "Adesão gratuita" : "Pagamento da adesão"}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{payment.amount_kz === 0 ? "Adesão gratuita" : "Renovação da comunidade"}</p>
           <p className="mt-1 font-display text-3xl font-black tabular text-foreground">{payment.amount_kz === 0 ? "0 Kz" : formatKz(payment.amount_kz)}</p>
         </div>
         <p className="rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">
           Referência: <span className="font-mono font-semibold text-foreground">{payment.reference}</span>
         </p>
       </div>
+
+      {payment.status === "confirmed" && payment.amount_kz > 0 && (
+        <p className="mt-4 text-sm text-success">Pagamento confirmado. A renovação foi aprovada e o acesso foi prolongado.</p>
+      )}
+      {payment.status === "pending" && payment.amount_kz > 0 && (
+        <p className="mt-4 text-sm text-muted-foreground">Pagamento pendente. O acesso só será prolongado depois da confirmação automática da Kursinha.</p>
+      )}
+      {payment.status === "cancelled" && (
+        <p className="mt-4 text-sm text-destructive">Este pagamento foi cancelado. Pode tentar novamente através do link de pagamento.</p>
+      )}
+      {payment.status === "rejected" && (
+        <p className="mt-4 text-sm text-destructive">O pagamento não foi confirmado. Contacte a equipa Encontre + se precisar de ajuda.</p>
+      )}
 
       {payment.checkout_url && (
         <Button asChild className="mt-5 w-full sm:w-auto">
