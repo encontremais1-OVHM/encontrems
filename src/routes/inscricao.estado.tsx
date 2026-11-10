@@ -194,8 +194,10 @@ function EstadoPage() {
               subgroupNames={data.subgroups?.map((group) => group.name) || []}
               communityName={data.community.name}
               communityStatus={data.access?.community || "pending"}
+              communityInviteUrl={data.access?.community_invite_url || null}
+              communityError={data.access?.community_error || null}
               groups={data.access?.groups || []}
-              authorized={data.status === "approved" && data.payment?.status === "confirmed" && Boolean(data.subscription && ["active", "grace_period"].includes(data.subscription.status))}
+              authorized={data.status === "approved" && data.payment?.status === "confirmed" && Boolean(data.subscription && ["pending", "active", "grace_period"].includes(data.subscription.status))}
             />
 
             {data.subscription?.due_at && Date.now() >= new Date(data.subscription.due_at).getTime() - 7 * 86400000 && data.payment?.status !== "pending" && data.status === "approved" && (
@@ -232,15 +234,18 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ subgroupNames, communityName, communityStatus, groups, authorized }: {
+function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communityInviteUrl, communityError, groups, authorized }: {
   subgroupNames: string[];
   communityName: string;
   communityStatus: string;
+  communityInviteUrl: string | null;
+  communityError: string | null;
   groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
   authorized: boolean;
 }) {
   const allSubgroupsJoined = subgroupNames.length > 0 && subgroupNames.every((name) => groups.some((group) => group.name === name && group.status === "joined"));
   if (!authorized) return null;
+  const communityFailed = communityStatus === "failed";
   const accessComplete = communityStatus === "active" && allSubgroupsJoined;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
@@ -248,13 +253,22 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, groups,
         <MessageCircle className="size-5 text-success" /> Acesso à Comunidade e aos subgrupos
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {accessComplete
-          ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp."
-          : "A Encontre + está a adicionar directamente o teu número através da conta administradora. A entrada só será considerada concluída depois de o WhatsApp confirmar a participação."}
+        {communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : "A Encontre + está a adicionar directamente o teu número através da conta administradora. A entrada só será considerada concluída depois de o WhatsApp confirmar a participação."}
       </p>
       <p className="mt-3 text-sm text-foreground">
-        Estado da Comunidade: <span className="font-semibold">{communityStatus === "active" ? "Entrada confirmada" : "A aguardar confirmação do WhatsApp"}</span>
+        Estado da Comunidade: <span className="font-semibold">{communityFailed ? "Número não reconhecido no WhatsApp" : communityStatus === "active" ? "Entrada confirmada" : "A aguardar confirmação do WhatsApp"}</span>
       </p>
+      {communityStatus === "active" && communityInviteUrl && (
+        <Button className="mt-3 w-full" onClick={() => window.open(communityInviteUrl, "_blank", "noopener,noreferrer")}>
+          Abrir Comunidade no WhatsApp
+        </Button>
+      )}
+      {communityFailed && (
+        <Alert variant="destructive" className="mt-3">
+          <AlertCircle className="size-4" />
+          <AlertDescription>{communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244."}</AlertDescription>
+        </Alert>
+      )}
       {subgroupNames.length > 0 && (
         <div className="mt-3 rounded-lg border px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grupos seleccionados / detectados</p>
@@ -280,10 +294,10 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, groups,
             <li>Procura e abre <strong className="text-foreground">{communityName}</strong>.</li>
             <li>Dentro da Comunidade, abre os subgrupos em que já foste adicionado: {subgroupNames.join(", ")}.</li>
           </ol>
-          <p className="mt-3 text-xs text-muted-foreground">Não precisas de aceitar um link público. Se não aparecer imediatamente, actualiza a lista de conversas do WhatsApp e confirma que estás a usar o mesmo número indicado na inscrição.</p>
+          <p className="mt-3 text-xs text-muted-foreground">Usa o botão acima para abrir a Comunidade no WhatsApp. Confirma que estás a utilizar o mesmo número indicado na inscrição.</p>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-muted-foreground">A plataforma está a processar a entrada autorizada. Não é necessário abrir nem partilhar ligações de convite. O estado será actualizado automaticamente; mantém o WhatsApp activo no número indicado na inscrição.</p>
+        <p className="mt-4 text-sm text-muted-foreground">A plataforma está a processar a entrada autorizada. O WhatsApp será aberto assim que a participação for confirmada; mantém o WhatsApp activo no número indicado na inscrição.</p>
       )}
     </section>
   );
