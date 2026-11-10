@@ -32,7 +32,7 @@ async function bridge(path, body) {
       ...(body ? { "content-type": "application/json" } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(4000),
+    signal: AbortSignal.timeout(10_000),
   });
   const raw = await response.text();
   const data = raw ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : {};
@@ -112,7 +112,7 @@ async function processInitialAccess(now, nowIso) {
     const leftGroup = groupById.get(left.whatsapp_group_id);
     const rightGroup = groupById.get(right.whatsapp_group_id);
     return (leftGroup?.group_type === "community" ? 0 : 1) - (rightGroup?.group_type === "community" ? 0 : 1);
-  }).slice(0, 3);
+  }).slice(0, 1);
 
   let attempted = 0, confirmed = 0, pending = 0;
   for (const membership of candidates) {
@@ -182,9 +182,20 @@ async function processInitialAccess(now, nowIso) {
     try {
       // Never trust the add response alone: only a fresh participant snapshot
       // can turn a pending membership into joined.
-      let confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
-      if (!confirmedInWhatsApp) {
+      let confirmedInWhatsApp = false;
+      try {
         await bridge(basePath + "/add", { phone });
+      } catch (addError) {
+        // A repeated add can be rejected when WhatsApp already has the member.
+        // Verify the live participant list before deciding this is a failure.
+        try {
+          confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
+        } catch {
+          throw addError;
+        }
+        if (!confirmedInWhatsApp) throw addError;
+      }
+      if (!confirmedInWhatsApp) {
         confirmedInWhatsApp = participantMatches((await bridge(basePath)).participants, phone);
       }
 
