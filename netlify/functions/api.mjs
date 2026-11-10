@@ -103,7 +103,7 @@ async function ensureRegistrationAddOperation(memberId, groupId, membershipId, n
   const key = "registration-add:" + membershipId;
   const existing = await sb("access_operations?select=id,status&idempotency_key=eq." + encodeURIComponent(key) + "&limit=1");
   if (existing[0]) {
-    if (["failed", "cancelled"].includes(existing[0].status)) {
+    if (["failed", "cancelled", "succeeded"].includes(existing[0].status)) {
       await sb("access_operations?id=eq." + existing[0].id, {
         method: "PATCH",
         body: JSON.stringify({ status: "queued", attempts: 0, last_error: null, next_retry_at: null, executed_at: null, updated_at: nowIso }),
