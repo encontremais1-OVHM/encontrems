@@ -830,7 +830,7 @@ export default async (request) => {
       const phone = digits(member.phone_e164 || member.phone);
       if (!/^\d{8,15}$/.test(phone)) return json(409,{message:"O número WhatsApp deste membro não é válido. Corrija o contacto antes de revogar o acesso."});
       const now = iso(new Date());
-      const groups = await sb("whatsapp_groups?select=id,external_group_id,group_type,is_active&community_id=eq." + subscription.community_id + "&is_active=eq.true");
+      const groups = await sb("whatsapp_groups?select=id,external_group_id,group_type,is_active&community_id=eq." + subscription.community_id");
       const groupIds = groups.map((group) => group.id);
       const existingMemberships = groupIds.length
         ? await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq." + memberId + "&whatsapp_group_id=in.(" + groupIds.join(",") + ")")
@@ -999,8 +999,8 @@ export default async (request) => {
       }
       const [community,subgroups,mainGroups,plans] = await Promise.all([
         sb("communities?select=id,status&id=eq."+body.community_id+"&status=eq.active"),
-        sb("whatsapp_groups?select=id,name,community_id,external_group_id,invite_link,group_type,is_active,image_url&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
-        sb("whatsapp_groups?select=id,name,external_group_id,invite_link,group_type,is_active,image_url&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.community"),
+        sb("whatsapp_groups?select=id,name,community_id,external_group_id,group_type,is_active,image_url&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
+        sb("whatsapp_groups?select=id,name,external_group_id,group_type,is_active,image_url&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.community"),
         sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
       ]);
       if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id || !g.external_group_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis. Todos os grupos escolhidos precisam estar sincronizados."});
