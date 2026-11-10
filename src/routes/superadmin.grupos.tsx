@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { MessageCircle, Users, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiErrorNotice } from "@/components/app/ApiStatus";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +28,20 @@ function GruposPage() {
   const [syncResult, setSyncResult] = useState<{ groups_imported: number; subgroups_imported: number; contacts_imported: number; participants_skipped: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const query = useQuery({ queryKey: ["whatsapp", "groups"], queryFn: () => apiRequest<{ data: WhatsAppGroup[] }>("/admin/whatsapp/groups"), retry: false });
-  const communities = useQuery({ queryKey: ["admin", "resource", "communities"], queryFn: () => apiRequest<{ data: Community[] }>("/admin/resources/communities"), retry: false });
-  const whatsappCommunities = useQuery({ queryKey: ["whatsapp", "communities"], queryFn: () => apiRequest<{ communities: WhatsAppCommunity[] }>("/admin/whatsapp/communities"), retry: false });
+  const query = useQuery({ queryKey: ["whatsapp", "groups"], queryFn: () => apiRequest<{ data: WhatsAppGroup[] }>("/admin/whatsapp/groups"), retry: 1, staleTime: 60_000, refetchOnWindowFocus: false });
+  const communities = useQuery({ queryKey: ["admin", "resource", "communities"], queryFn: () => apiRequest<{ data: Community[] }>("/admin/resources/communities"), retry: 1, staleTime: 60_000, refetchOnWindowFocus: false });
+  const whatsappCommunities = useQuery({ queryKey: ["whatsapp", "communities"], queryFn: () => apiRequest<{ communities: WhatsAppCommunity[] }>("/admin/whatsapp/communities"), retry: 1, staleTime: 120_000, refetchOnWindowFocus: false });
+
+  // Restore the saved platform ↔ WhatsApp association after every page load.
+  // The database mapping is the source of truth; a reload must not require a new sync.
+  useEffect(() => {
+    if (syncCommunity || syncWhatsAppCommunityId || !query.data?.data?.length) return;
+    const container = query.data.data.find(group => group.group_type === "community" && group.external_group_id && group.community_id);
+    if (container) {
+      setSyncCommunity(container.community_id);
+      setSyncWhatsAppCommunityId(container.external_group_id);
+    }
+  }, [query.data, syncCommunity, syncWhatsAppCommunityId]);
 
   const sync = useMutation({
     mutationFn: () => apiRequest<{ groups_imported: number; subgroups_imported: number; contacts_imported: number; participants_skipped: number }>("/admin/whatsapp/sync", {
@@ -75,7 +86,7 @@ function GruposPage() {
     <section className="rounded-xl border bg-card p-5 shadow-card space-y-4">
       <div>
         <h2 className="font-semibold text-foreground">Sincronizar uma Comunidade WhatsApp</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Escolha a comunidade criada no Superadmin e a Comunidade real encontrada pela conta WhatsApp conectada. A sincronização importa a fotografia da Comunidade e as fotografias dos grupos internos.</p>
+        <p className="mt-1 text-sm text-muted-foreground">A associação já guardada é recuperada automaticamente quando abre esta página. Só volte a sincronizar se estiver a associar uma comunidade diferente ou a importar alterações recentes do WhatsApp.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1.5">
