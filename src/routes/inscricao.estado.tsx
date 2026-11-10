@@ -192,6 +192,7 @@ function EstadoPage() {
 
             <WhatsAppAccess
               subgroupNames={data.subgroups?.map((group) => group.name) || []}
+              communityName={data.community.name}
               communityStatus={data.access?.community || "pending"}
               groups={data.access?.groups || []}
               authorized={data.status === "approved" && data.payment?.status === "confirmed" && Boolean(data.subscription && ["active", "grace_period"].includes(data.subscription.status))}
@@ -231,21 +232,25 @@ function EstadoPage() {
   );
 }
 
-function WhatsAppAccess({ subgroupNames, communityStatus, groups, authorized }: {
+function WhatsAppAccess({ subgroupNames, communityName, communityStatus, groups, authorized }: {
   subgroupNames: string[];
+  communityName: string;
   communityStatus: string;
   groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
   authorized: boolean;
 }) {
   const allSubgroupsJoined = subgroupNames.length > 0 && subgroupNames.every((name) => groups.some((group) => group.name === name && group.status === "joined"));
-  if (!authorized || (communityStatus === "active" && allSubgroupsJoined)) return null;
+  if (!authorized) return null;
+  const accessComplete = communityStatus === "active" && allSubgroupsJoined;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
       <p className="flex items-center gap-2 font-display text-lg font-extrabold text-foreground">
         <MessageCircle className="size-5 text-success" /> Acesso à Comunidade e aos subgrupos
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        A Encontre + está a confirmar a tua entrada directamente através do WhatsApp. A entrada só será considerada concluída depois de o número aparecer como participante.
+        {accessComplete
+          ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp."
+          : "A Encontre + está a adicionar directamente o teu número através da conta administradora. A entrada só será considerada concluída depois de o WhatsApp confirmar a participação."}
       </p>
       <p className="mt-3 text-sm text-foreground">
         Estado da Comunidade: <span className="font-semibold">{communityStatus === "active" ? "Entrada confirmada" : "A aguardar confirmação do WhatsApp"}</span>
@@ -266,11 +271,20 @@ function WhatsAppAccess({ subgroupNames, communityStatus, groups, authorized }: 
           </ul>
         </div>
       )}
-      <p className="mt-4 text-sm text-muted-foreground">
-        {communityStatus === "active"
-          ? "A entrada na Comunidade já está confirmada. Os subgrupos seleccionados continuam a ser sincronizados automaticamente."
-          : "A plataforma está a processar a entrada autorizada. Não é necessário abrir nem partilhar ligações de convite. O estado será actualizado automaticamente."}
-      </p>
+      {accessComplete ? (
+        <div className="mt-4 rounded-lg border border-success/30 bg-background p-4">
+          <p className="font-semibold text-foreground">Como encontrar a tua Comunidade no WhatsApp</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            <li>Abre o WhatsApp no telemóvel onde utilizas o número {""}da inscrição.</li>
+            <li>Entra no separador <strong className="text-foreground">Comunidades</strong>.</li>
+            <li>Procura e abre <strong className="text-foreground">{communityName}</strong>.</li>
+            <li>Dentro da Comunidade, abre os subgrupos em que já foste adicionado: {subgroupNames.join(", ")}.</li>
+          </ol>
+          <p className="mt-3 text-xs text-muted-foreground">Não precisas de aceitar um link público. Se não aparecer imediatamente, actualiza a lista de conversas do WhatsApp e confirma que estás a usar o mesmo número indicado na inscrição.</p>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">A plataforma está a processar a entrada autorizada. Não é necessário abrir nem partilhar ligações de convite. O estado será actualizado automaticamente; mantém o WhatsApp activo no número indicado na inscrição.</p>
+      )}
     </section>
   );
 }
