@@ -224,7 +224,7 @@ function MembersPage() {
                         variant="destructive"
                         disabled={removeMember.isPending || !m.subscription_status || m.access_status === "removed"}
                         onClick={() => {
-                          if (window.confirm(`Revogar o acesso de ${m.full_name}? A subscrição será cancelada e a remoção da Comunidade e dos subgrupos será colocada em fila.`)) {
+                          if (window.confirm(`Revogar o acesso de ${m.full_name}? A subscrição será cancelada e a conta administradora iniciará a remoção da Comunidade e de todos os subgrupos.`)) {
                             removeMember.mutate(m.id);
                           }
                         }}

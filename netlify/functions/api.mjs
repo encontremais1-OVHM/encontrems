@@ -819,24 +819,92 @@ export default async (request) => {
     const manualRemove = path.match(/^\/admin\/members\/([0-9a-f-]{36})\/remove$/i);
     if (manualRemove && method === "POST") {
       const memberId = manualRemove[1];
-      const memberRows = await sb("members?select=id,full_name&id=eq." + memberId + "&limit=1");
-      if (!memberRows[0]) return json(404,{message:"Membro não encontrado."});
-      const subs = await sb("subscriptions?select=id,status,expires_at,grace_ends_at&member_id=eq." + memberId + "&order=created_at.desc&limit=1");
+      const [memberRows, subs] = await Promise.all([
+        sb("members?select=id,full_name,phone,phone_e164&id=eq." + memberId + "&limit=1"),
+        sb("subscriptions?select=id,community_id,status,expires_at,grace_ends_at&member_id=eq." + memberId + "&order=created_at.desc&limit=1"),
+      ]);
+      const member = memberRows[0];
       const subscription = subs[0];
+      if (!member) return json(404,{message:"Membro não encontrado."});
       if (!subscription) return json(409,{message:"Este membro não tem uma subscrição para revogar."});
-      if (subscription.status === "cancelled" && subscription.grace_ends_at && new Date(subscription.grace_ends_at).getTime() <= Date.now()) {
-        return json(202,{message:"A remoção deste membro já está agendada."});
-      }
+      const phone = digits(member.phone_e164 || member.phone);
+      if (!/^\d{8,15}$/.test(phone)) return json(409,{message:"O número WhatsApp deste membro não é válido. Corrija o contacto antes de revogar o acesso."});
       const now = iso(new Date());
       await sb("subscriptions?id=eq." + subscription.id, {
         method:"PATCH",
         body:JSON.stringify({status:"cancelled",grace_ends_at:now,ended_at:now,updated_at:now}),
         headers:{Prefer:"return=minimal"},
       });
+      const groups = await sb("whatsapp_groups?select=id,external_group_id,group_type,is_active&community_id=eq." + subscription.community_id);
+      const groupIds = groups.map((group) => group.id);
+      const existingMemberships = groupIds.length
+        ? await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq." + memberId + "&whatsapp_group_id=in.(" + groupIds.join(",") + ")")
+        : [];
+      const membershipByGroup = new Map(existingMemberships.map((membership) => [membership.whatsapp_group_id, membership]));
+      let queued = 0;
+      for (const group of groups) {
+        let membership = membershipByGroup.get(group.id);
+        if (!membership) {
+          const inserted = await sb("group_memberships", {
+            method:"POST",
+            body:JSON.stringify([{
+              member_id:memberId,
+              whatsapp_group_id:group.id,
+              external_participant_id:phone+"@s.whatsapp.net",
+              status:"removal_pending",
+            }]),
+            headers:{Prefer:"return=representation"},
+          });
+          membership = inserted[0];
+        } else {
+          await sb("group_memberships?id=eq." + membership.id, {
+            method:"PATCH",
+            body:JSON.stringify({
+              status:"removal_pending",
+              external_participant_id:phone+"@s.whatsapp.net",
+              removed_at:null,
+              updated_at:now,
+            }),
+            headers:{Prefer:"return=minimal"},
+          });
+        }
+        const key = "manual-remove:" + subscription.id + ":" + group.id;
+        const existing = await sb("access_operations?select=id&idempotency_key=eq." + encodeURIComponent(key) + "&limit=1");
+        if (existing[0]) {
+          await sb("access_operations?id=eq." + existing[0].id, {
+            method:"PATCH",
+            body:JSON.stringify({status:"queued",attempts:0,last_error:null,next_retry_at:null,updated_at:now}),
+            headers:{Prefer:"return=minimal"},
+          });
+        } else {
+          await sb("access_operations", {
+            method:"POST",
+            body:JSON.stringify([{
+              member_id:memberId,
+              whatsapp_group_id:group.id,
+              operation_type:"remove",
+              status:"queued",
+              idempotency_key:key,
+              attempts:0,
+            }]),
+            headers:{Prefer:"return=minimal"},
+          });
+        }
+        queued++;
+      }
+      if (groupIds.length) {
+        await sb("access_operations?member_id=eq." + memberId + "&whatsapp_group_id=in.(" + groupIds.join(",") + ")&operation_type=eq.add&status=in.(queued,retry_pending,processing)", {
+          method:"PATCH",
+          body:JSON.stringify({status:"cancelled",last_error:"Acesso revogado pelo Super Admin.",next_retry_at:null,updated_at:now}),
+          headers:{Prefer:"return=minimal"},
+        });
+      }
       await writeAudit(user,"member.access_revoked_manually","subscription",subscription.id,
         {status:subscription.status,expires_at:subscription.expires_at,grace_ends_at:subscription.grace_ends_at},
-        {status:"cancelled",grace_ends_at:now,removal_queued:true},memberId);
-      return json(202,{message:"A revogação foi registada. A remoção da Comunidade e dos subgrupos será processada pelo serviço WhatsApp."});
+        {status:"cancelled",grace_ends_at:now,removal_queued:true,groups_queued:queued},memberId);
+      return json(202,{message:queued
+        ? "Acesso revogado imediatamente na plataforma. A conta administradora está a remover o membro da Comunidade e dos subgrupos; o painel só marcará a remoção como concluída após confirmação do WhatsApp."
+        : "Acesso revogado na plataforma. Não existem grupos activos associados a esta comunidade."});
     }
     if (path === "/admin/members" && method === "GET") return json(200,await adminMembers(q));
     if (path === "/admin/payments" && method === "GET") return json(200,await adminPayments());
@@ -931,8 +999,8 @@ export default async (request) => {
       }
       const [community,subgroups,mainGroups,plans] = await Promise.all([
         sb("communities?select=id,status&id=eq."+body.community_id+"&status=eq.active"),
-        sb("whatsapp_groups?select=id,name,community_id,external_group_id,invite_link,group_type,is_active,image_url&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
-        sb("whatsapp_groups?select=id,name,external_group_id,invite_link,group_type,is_active,image_url&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.community"),
+        sb("whatsapp_groups?select=id,name,community_id,external_group_id,group_type,is_active,image_url&id=in.("+subgroupIds.join(",")+")&is_active=eq.true&group_type=eq.subgroup"),
+        sb("whatsapp_groups?select=id,name,external_group_id,group_type,is_active,image_url&community_id=eq."+body.community_id+"&is_active=eq.true&group_type=eq.community"),
         sb("plans?select=id,initial_price,renewal_price,duration_days,grace_days&community_id=eq."+body.community_id+"&is_active=eq.true&limit=1"),
       ]);
       if (!community.length || subgroups.length !== subgroupIds.length || subgroups.some((g)=>g.community_id !== body.community_id || !g.external_group_id) || !plans.length) return json(422,{message:"Comunidade, subgrupos ou plano indisponíveis. Todos os grupos escolhidos precisam estar sincronizados."});
@@ -985,60 +1053,43 @@ export default async (request) => {
         ...subgroups.map((group)=>({group,kind:"subgroup"})),
       ];
       const accessResults = [];
-      let waConnected = false;
-      try { waConnected = (await bridge("/status")).connected === true; } catch { /* invitation remains pending */ }
-      // The member joins the parent Community through its invite link, then
-      // chooses linked subgroups inside WhatsApp. Never force-add people to
-      // the Community or its subgroups from the registration request.
-      // Never send the last saved invite as a fallback: it may have been reset in WhatsApp.
+      // The public registration endpoint never opens, reads or distributes a
+      // WhatsApp invite. It only records authorised memberships as pending.
+      // The scheduled registration-access worker adds each participant through
+      // the linked administrator account and confirms them against WhatsApp.
       for (const target of targets) {
         const found = await sb("group_memberships?select=id,status,external_participant_id&member_id=eq."+member.id+"&whatsapp_group_id=eq."+target.group.id+"&limit=1");
         let membership = found[0];
-        let confirmedInWhatsApp = membership?.status === "joined";
-        if (waConnected && target.group.external_group_id) {
-          try {
-            const endpoint = target.kind === "community"
-              ? "/communities/" + encodeURIComponent(target.group.external_group_id) + "/participants"
-              : "/groups/" + encodeURIComponent(target.group.external_group_id) + "/participants";
-            const participantSnapshot = await bridge(endpoint);
-            confirmedInWhatsApp = (participantSnapshot.participants || []).some((participant) => {
-              const jid = String(participant.jid || participant.id || "");
-              return digits(jid.split("@")[0].split(":")[0]) === phone;
-            });
-          } catch { /* retain the last confirmed database state when WhatsApp cannot be queried */ }
-        }
         if (!membership) {
           const inserted = await sb("group_memberships", {
             method:"POST",
             body:JSON.stringify([{
-              member_id:member.id,whatsapp_group_id:target.group.id,external_participant_id:phone+"@s.whatsapp.net",
-              status:confirmedInWhatsApp ? "joined" : "pending_invitation",
-              joined_at:confirmedInWhatsApp ? iso(new Date()) : null,
+              member_id:member.id,
+              whatsapp_group_id:target.group.id,
+              external_participant_id:phone+"@s.whatsapp.net",
+              status:"pending_invitation",
             }]),
             headers:{Prefer:"return=representation"},
           });
           membership = inserted[0];
-        } else if (confirmedInWhatsApp && membership.status !== "joined") {
+        } else if (membership.status !== "joined") {
           await sb("group_memberships?id=eq."+membership.id, {
             method:"PATCH",
-            body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(new Date()),removed_at:null,last_synced_at:iso(new Date()),updated_at:iso(new Date())}),
-            headers:{Prefer:"return=minimal"},
-          });
-          membership.status = "joined";
-        } else if (!confirmedInWhatsApp && membership.status !== "joined") {
-          await sb("group_memberships?id=eq."+membership.id, {
-            method:"PATCH",
-            body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",removed_at:null,updated_at:iso(new Date())}),
+            body:JSON.stringify({
+              status:"pending_invitation",
+              external_participant_id:phone+"@s.whatsapp.net",
+              removed_at:null,
+              updated_at:iso(now),
+            }),
             headers:{Prefer:"return=minimal"},
           });
           membership.status = "pending_invitation";
         }
-        const accessStatus = membership.status === "joined" ? "joined" : "pending_invitation";
         accessResults.push({
           id:target.group.id,
           name:target.group.name,
           kind:target.kind,
-          status:accessStatus,
+          status:membership.status === "joined" ? "joined" : "pending_invitation",
         });
       }
       const communityAccess = accessResults.find((item)=>item.kind==="community");
