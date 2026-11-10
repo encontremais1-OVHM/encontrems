@@ -99,6 +99,26 @@ const digits = (value) => String(value || "").replace(/\D/g, "");
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const iso = (date) => date.toISOString();
 
+async function ensureRegistrationAddOperation(memberId, groupId, membershipId, nowIso) {
+  const key = "registration-add:" + membershipId;
+  const existing = await sb("access_operations?select=id,status&idempotency_key=eq." + encodeURIComponent(key) + "&limit=1");
+  if (existing[0]) {
+    if (["failed", "cancelled"].includes(existing[0].status)) {
+      await sb("access_operations?id=eq." + existing[0].id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "queued", attempts: 0, last_error: null, next_retry_at: null, executed_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+    }
+    return;
+  }
+  await sb("access_operations?on_conflict=idempotency_key", {
+    method: "POST",
+    body: JSON.stringify([{ member_id: memberId, whatsapp_group_id: groupId, operation_type: "add", status: "queued", idempotency_key: key, attempts: 0, created_at: nowIso, updated_at: nowIso }]),
+    headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+  });
+}
+
 async function publicCommunities() {
   const [communities, groups] = await Promise.all([
     sb("communities?select=id,name,slug,description,status,image_url,whatsapp_community_id&status=eq.active&order=name.asc"),
@@ -1084,6 +1104,9 @@ export default async (request) => {
             headers:{Prefer:"return=minimal"},
           });
           membership.status = "pending_invitation";
+        }
+        if (membership.status !== "joined") {
+          await ensureRegistrationAddOperation(member.id, target.group.id, membership.id, iso(now));
         }
         accessResults.push({
           id:target.group.id,
