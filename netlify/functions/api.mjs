@@ -1218,7 +1218,7 @@ export default async (request) => {
         sb("whatsapp_groups?select=id,name,group_type,external_group_id&community_id=eq."+sub.community_id+"&is_active=eq.true"),
         sb("group_memberships?select=whatsapp_group_id,status,joined_at,removed_at&member_id=eq."+sub.member_id+"&order=created_at.desc"),
         sb("payments?select=payment_reference,amount,status,created_at,paid_at,payment_type,provider,metadata&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
-        sb("access_operations?select=id,whatsapp_group_id,operation_type,status,last_error,created_at&member_id=eq."+sub.member_id+"&operation_type=eq.add&order=created_at.desc&limit=20"),
+        sb("access_operations?select=id,whatsapp_group_id,operation_type,status,last_error,next_retry_at,created_at&member_id=eq."+sub.member_id+"&operation_type=eq.add&order=created_at.desc&limit=20"),
       ]);
       const member = members[0], community = communities[0];
       if (!member || digits(member.phone_e164 || member.phone) !== phone || !community) return json(404,{message:"Inscrição não encontrada."});
@@ -1231,9 +1231,15 @@ export default async (request) => {
       const communityJoined = communityMembership?.status === "joined";
       const communityFailed = communityMembership?.status === "failed";
       const communityOperation = mainGroup ? accessOperations.find((op)=>op.whatsapp_group_id===mainGroup.id && op.operation_type==="add") : null;
+      const retryError = String(communityOperation?.last_error || "").toLowerCase();
+      const communityRetrying = !communityJoined && !communityFailed && (
+        retryError.includes("rate-overlimit") || retryError.includes("limite do whatsapp")
+      );
       const communityError = communityFailed
         ? (communityOperation?.last_error || "O WhatsApp não conseguiu confirmar a adição deste número.")
-        : null;
+        : communityRetrying
+          ? "O WhatsApp está a limitar temporariamente os pedidos. A plataforma vai tentar novamente automaticamente; não precisa de fazer outra inscrição."
+          : null;
       let communityInviteUrl = null;
       if (communityJoined && mainGroup?.external_group_id) {
         try {
@@ -1263,8 +1269,9 @@ export default async (request) => {
         payment,
         subscription:{status:sub.status,due_at:sub.expires_at},
         access:{
-          community:communityJoined ? "active" : communityFailed ? "failed" : "pending",
+          community:communityJoined ? "active" : communityFailed ? "failed" : communityRetrying ? "retrying" : "pending",
           community_joined_at:communityMembership?.joined_at || null,
+          community_retry_at:communityRetrying ? communityOperation?.next_retry_at || null : null,
           community_error:communityError,
           subgroup:subgroupAccessReady ? "active" : "pending",
           community_invite_url:communityInviteUrl,
