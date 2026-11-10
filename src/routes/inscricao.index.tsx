@@ -597,7 +597,7 @@ function Receipt({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-3 text-sm">
             <span className="font-medium text-foreground">{communityName} · Comunidade principal</span>
-            <span className={receipt.access.community === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{communityJoined ? "Entrada confirmada pelo WhatsApp" : "Aguarda adição e confirmação"}</span>
+            <span className={communityJoined ? "font-semibold text-success" : "font-semibold text-amber-600"}>{communityJoined ? "Entrada confirmada pelo WhatsApp" : "Aguarda adição e confirmação"}</span>
           </div>
           {receipt.access.subgroups.length > 0 && (
             <div className="rounded-lg border px-3 py-3">
