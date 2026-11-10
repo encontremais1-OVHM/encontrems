@@ -37,8 +37,26 @@ async function bridge(path, body) {
 
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
-  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,created_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
-  const groupIds = [...new Set(operations.map((operation) => operation.whatsapp_group_id))];
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,created_at,updated_at,external_operation_id,last_error&operation_type=eq.add&status=in.(queued,retry_pending,processing,failed,cancelled)&order=created_at.asc&limit=100");
+  // One-time recovery for failed/cancelled initial registrations created by
+  // the previous worker. Permanent permission failures are not retried.
+  for (const operation of operations) {
+    const isInitial = String(operation.idempotency_key || "").startsWith("registration-add:");
+    const recoverable = ["failed", "cancelled"].includes(operation.status) && !operation.external_operation_id && isInitial && !/bot_must_be_(community|group)_admin|forbidden|403/i.test(String(operation.last_error || ""));
+    if (!recoverable) continue;
+    await db("access_operations?id=eq." + operation.id, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "queued", attempts: 0, external_operation_id: "registration-recovery-v1", last_error: "Recuperação única da inscrição inicial após correção do worker.", next_retry_at: null, updated_at: nowIso }),
+      headers: { Prefer: "return=minimal" },
+    });
+    operation.status = "queued";
+    operation.attempts = 0;
+    operation.external_operation_id = "registration-recovery-v1";
+    operation.last_error = null;
+    operation.next_retry_at = null;
+  }
+
+  const groupIds = [...new Set(operations.filter((operation) => ["queued", "retry_pending", "processing"].includes(operation.status)).map((operation) => operation.whatsapp_group_id))];
     const groupTypes = groupIds.length ? await db("whatsapp_groups?select=id,group_type&id=in.(" + groupIds.join(",") + ")") : [];
     const groupPriority = new Map(groupTypes.map((group) => [group.id, group.group_type === "community" ? 0 : 1]));
     const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000))
