@@ -799,7 +799,7 @@ async function handleWhatsAppWebhook(request) {
     : "";
 
   if (!eventId || eventId.length > 128 || !groupId.endsWith("@g.us")
-      || action !== "add" || !/^\\d{8,15}$/.test(phone)) {
+      || action !== "add" || !/^\d{8,15}$/.test(phone)) {
     return json(400, { received: false, error: "invalid_whatsapp_participant_event" });
   }
 
