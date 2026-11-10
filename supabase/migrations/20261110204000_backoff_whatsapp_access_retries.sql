@@ -166,7 +166,6 @@ begin
       exception when others then
         update public.access_operations
         set status = 'retry_pending',
-            attempts = coalesce(attempts, 0) + 1,
             next_retry_at = pg_catalog.now() + v_retry_delay,
             last_error = left(sqlerrm, 300),
             updated_at = pg_catalog.now()
