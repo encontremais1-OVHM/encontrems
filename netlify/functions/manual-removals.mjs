@@ -78,7 +78,7 @@ export default async () => {
       const configuredGraceDays = Math.max(0, Number(plans[0]?.grace_days || 0));
       const calculatedGraceEnd = Number.isFinite(expiresAt) ? expiresAt + configuredGraceDays * 86400000 : Number.NaN;
       const storedGraceEnd = subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : Number.NaN;
-      const effectiveGraceEnd = Math.max(calculatedGraceEnd, storedGraceEnd);
+      const effectiveGraceEnd = Math.max(Number.isFinite(calculatedGraceEnd) ? calculatedGraceEnd : Number.NEGATIVE_INFINITY, Number.isFinite(storedGraceEnd) ? storedGraceEnd : Number.NEGATIVE_INFINITY);
       const immediatelyRevoked = subscription && ["cancelled", "suspended"].includes(subscription.status);
       const hasTimedSubscription = Boolean(subscription)
         && ["active", "grace_period", "expired"].includes(subscription.status)
