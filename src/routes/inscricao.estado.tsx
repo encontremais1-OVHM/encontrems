@@ -254,7 +254,7 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communi
         <MessageCircle className="size-5 text-success" /> Acesso à Comunidade e aos subgrupos
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisas de fazer outra inscrição.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : "A Encontre + está a adicionar automaticamente o teu número através da conta administradora. A entrada só será considerada concluída depois de o WhatsApp confirmar a participação."}
+        {communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisas de fazer outra inscrição.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : communityStatus === "active" ? "A tua entrada na Comunidade principal foi confirmada. Os subgrupos seleccionados estão agora a ser processados." : "A Encontre + está a solicitar primeiro a tua entrada na Comunidade principal. Os subgrupos seleccionados só serão processados depois de o WhatsApp confirmar essa entrada."}
       </p>
       <p className="mt-3 text-sm text-foreground">
         Estado da Comunidade: <span className="font-semibold">{communityFailed ? "Número não reconhecido no WhatsApp" : communityRetrying ? "Nova tentativa automática agendada" : communityStatus === "active" ? "Entrada confirmada" : "Adição automática em curso"}</span>
@@ -279,7 +279,7 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communi
               return <li key={name} className="flex items-center justify-between gap-3">
                 <span>{name}</span>
                 <span className={group?.status === "joined" ? "font-semibold text-success" : "text-muted-foreground"}>
-                  {group?.status === "joined" ? "Entrada confirmada" : group?.status === "removed" ? "Saiu do grupo" : group?.status === "failed" ? "Adição não concluída" : group?.status === "invited" ? "A confirmar entrada" : "Adição em curso"}
+                  {group?.status === "joined" ? "Entrada confirmada" : group?.status === "removed" ? "Saiu do grupo" : group?.status === "failed" ? "Adição não concluída" : group?.status === "invited" ? "A confirmar entrada" : communityStatus !== "active" ? "A aguardar entrada na Comunidade principal" : "Adição em curso"}
                 </span>
               </li>;
             })}
