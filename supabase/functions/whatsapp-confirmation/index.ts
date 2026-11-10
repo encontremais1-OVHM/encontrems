@@ -172,7 +172,7 @@ Deno.serve(async (req: Request) => {
       const calculatedGraceEnd = Number.isFinite(expiresAt)
         ? expiresAt + Math.max(0, Number(plans[0]?.grace_days || 0)) * 86_400_000
         : Number.NaN;
-      const effectiveGraceEnd = Math.max(storedGraceEnd, calculatedGraceEnd);
+      const effectiveGraceEnd = Math.max(Number.isFinite(storedGraceEnd) ? storedGraceEnd : Number.NEGATIVE_INFINITY, Number.isFinite(calculatedGraceEnd) ? calculatedGraceEnd : Number.NEGATIVE_INFINITY);
       hasCurrentAccess = Number.isFinite(effectiveGraceEnd) && effectiveGraceEnd >= now;
     }
 
