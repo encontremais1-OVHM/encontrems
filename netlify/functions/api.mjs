@@ -1059,14 +1059,48 @@ export default async (request) => {
         sb("group_memberships?select=member_id,whatsapp_group_id,status,external_participant_id"),
         sb("members?select=id,full_name,phone_e164,phone,email"),
       ]);
-      return json(200,{data:groups.map((g)=>({
-        ...g,
-        participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").map((m)=>{
-          const person=members.find((p)=>p.id===m.member_id);
-          return person ? {id:person.id,name:person.full_name,phone:person.phone_e164 || person.phone,email:person.email,status:m.status} : null;
-        }).filter(Boolean),
-        participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
-      }))});
+      const communityGroup = groups.find((group) => group.group_type === "community" && group.is_active && group.external_group_id);
+      let communityParticipants = [];
+      let communityParticipantsError = null;
+      let communityParticipantsCheckedAt = null;
+      if (communityGroup) {
+        try {
+          const live = await bridge("/communities/" + encodeURIComponent(communityGroup.external_group_id) + "/participants?fresh=true");
+          communityParticipants = (live.participants || []).map((participant) => {
+            const jid = String(participant.jid || participant.phoneNumber || participant.id || "");
+            const phoneDigits = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
+            const person = phoneDigits
+              ? members.find((member) => digits(member.phone_e164 || member.phone) === phoneDigits)
+              : null;
+            return {
+              id: String(participant.id || jid),
+              name: person?.full_name || "Participante WhatsApp",
+              phone: phoneDigits ? "+" + phoneDigits : "Número não disponível",
+              email: person?.email || null,
+              admin: Boolean(participant.admin),
+              registered: Boolean(person),
+            };
+          });
+          communityParticipantsCheckedAt = iso(new Date());
+        } catch (error) {
+          communityParticipantsError = error instanceof Error ? error.message : "Não foi possível consultar os participantes no WhatsApp.";
+        }
+      }
+      return json(200,{
+        data:groups.map((g)=>({
+          ...g,
+          participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").map((m)=>{
+            const person=members.find((p)=>p.id===m.member_id);
+            return person ? {id:person.id,name:person.full_name,phone:person.phone_e164 || person.phone,email:person.email,status:m.status} : null;
+          }).filter(Boolean),
+          participants_count:g.group_type==="community" && communityParticipantsCheckedAt
+            ? communityParticipants.length
+            : memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
+        })),
+        community_participants:communityParticipants,
+        community_participants_error:communityParticipantsError,
+        community_participants_checked_at:communityParticipantsCheckedAt,
+      });
     }
     const groupSettings = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/settings$/i);
     if (groupSettings && method === "PATCH") {
