@@ -830,6 +830,11 @@ export default async (request) => {
       const phone = digits(member.phone_e164 || member.phone);
       if (!/^\d{8,15}$/.test(phone)) return json(409,{message:"O número WhatsApp deste membro não é válido. Corrija o contacto antes de revogar o acesso."});
       const now = iso(new Date());
+      await sb("subscriptions?id=eq." + subscription.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"cancelled",grace_ends_at:now,ended_at:now,updated_at:now}),
+        headers:{Prefer:"return=minimal"},
+      });
       const groups = await sb("whatsapp_groups?select=id,external_group_id,group_type,is_active&community_id=eq." + subscription.community_id");
       const groupIds = groups.map((group) => group.id);
       const existingMemberships = groupIds.length
@@ -894,11 +899,6 @@ export default async (request) => {
           headers:{Prefer:"return=minimal"},
         });
       }
-      await sb("subscriptions?id=eq." + subscription.id, {
-        method:"PATCH",
-        body:JSON.stringify({status:"cancelled",grace_ends_at:now,ended_at:now,updated_at:now}),
-        headers:{Prefer:"return=minimal"},
-      });
       await writeAudit(user,"member.access_revoked_manually","subscription",subscription.id,
         {status:subscription.status,expires_at:subscription.expires_at,grace_ends_at:subscription.grace_ends_at},
         {status:"cancelled",grace_ends_at:now,removal_queued:true,groups_queued:queued},memberId);
