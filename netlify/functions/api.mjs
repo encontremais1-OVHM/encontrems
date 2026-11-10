@@ -99,26 +99,6 @@ const digits = (value) => String(value || "").replace(/\D/g, "");
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const iso = (date) => date.toISOString();
 
-async function ensureRegistrationAddOperation(memberId, groupId, membershipId, nowIso) {
-  const key = "registration-add:" + membershipId;
-  const existing = await sb("access_operations?select=id,status&idempotency_key=eq." + encodeURIComponent(key) + "&limit=1");
-  if (existing[0]) {
-    if (["failed", "cancelled", "succeeded"].includes(existing[0].status)) {
-      await sb("access_operations?id=eq." + existing[0].id, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "queued", attempts: 0, external_operation_id: null, last_error: null, next_retry_at: null, executed_at: null, updated_at: nowIso }),
-        headers: { Prefer: "return=minimal" },
-      });
-    }
-    return;
-  }
-  await sb("access_operations?on_conflict=idempotency_key", {
-    method: "POST",
-    body: JSON.stringify([{ member_id: memberId, whatsapp_group_id: groupId, operation_type: "add", status: "queued", idempotency_key: key, attempts: 0, created_at: nowIso, updated_at: nowIso }]),
-    headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
-  });
-}
-
 let whatsappImageBucketReady = false;
 async function persistWhatsAppGroupImage(externalGroupId, objectKey) {
   try {
@@ -1014,14 +994,48 @@ export default async (request) => {
         sb("group_memberships?select=member_id,whatsapp_group_id,status,external_participant_id"),
         sb("members?select=id,full_name,phone_e164,phone,email"),
       ]);
-      return json(200,{data:groups.map((g)=>({
-        ...g,
-        participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").map((m)=>{
-          const person=members.find((p)=>p.id===m.member_id);
-          return person ? {id:person.id,name:person.full_name,phone:person.phone_e164 || person.phone,email:person.email,status:m.status} : null;
-        }).filter(Boolean),
-        participants_count:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
-      }))});
+      const communityGroup = groups.find((group) => group.group_type === "community" && group.is_active && group.external_group_id);
+      let communityParticipants = [];
+      let communityParticipantsError = null;
+      let communityParticipantsCheckedAt = null;
+      if (communityGroup) {
+        try {
+          const live = await bridge("/communities/" + encodeURIComponent(communityGroup.external_group_id) + "/participants?fresh=true");
+          communityParticipants = (live.participants || []).map((participant) => {
+            const jid = String(participant.jid || participant.phoneNumber || participant.id || "");
+            const phoneDigits = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
+            const person = phoneDigits
+              ? members.find((member) => digits(member.phone_e164 || member.phone) === phoneDigits)
+              : null;
+            return {
+              id: String(participant.id || jid),
+              name: person?.full_name || "Participante WhatsApp",
+              phone: phoneDigits ? "+" + phoneDigits : "Número não disponível",
+              email: person?.email || null,
+              admin: Boolean(participant.admin),
+              registered: Boolean(person),
+            };
+          });
+          communityParticipantsCheckedAt = iso(new Date());
+        } catch (error) {
+          communityParticipantsError = error instanceof Error ? error.message : "Não foi possível consultar os participantes no WhatsApp.";
+        }
+      }
+      return json(200,{
+        data:groups.map((g)=>({
+          ...g,
+          participants:memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").map((m)=>{
+            const person=members.find((p)=>p.id===m.member_id);
+            return person ? {id:person.id,name:person.full_name,phone:person.phone_e164 || person.phone,email:person.email,status:m.status} : null;
+          }).filter(Boolean),
+          participants_count:g.group_type==="community" && communityParticipantsCheckedAt
+            ? communityParticipants.length
+            : memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
+        })),
+        community_participants:communityParticipants,
+        community_participants_error:communityParticipantsError,
+        community_participants_checked_at:communityParticipantsCheckedAt,
+      });
     }
     const groupSettings = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/settings$/i);
     if (groupSettings && method === "PATCH") {
@@ -1149,9 +1163,7 @@ export default async (request) => {
           });
           membership.status = "pending_invitation";
         }
-        if (membership.status !== "joined") {
-          await ensureRegistrationAddOperation(member.id, target.group.id, membership.id, iso(now));
-        }
+        // The database trigger queues the Community; the signed join RPC queues selected subgroups after confirmation.
         accessResults.push({
           id:target.group.id,
           name:target.group.name,

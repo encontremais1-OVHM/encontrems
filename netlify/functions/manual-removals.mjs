@@ -55,7 +55,7 @@ export default async () => {
 
   for (const operation of due) {
     const [groups, memberships, members] = await Promise.all([
-      db("whatsapp_groups?select=id,external_group_id,group_type&id=eq." + operation.whatsapp_group_id + "&limit=1"),
+      db("whatsapp_groups?select=id,community_id,external_group_id,group_type&id=eq." + operation.whatsapp_group_id + "&limit=1"),
       db("group_memberships?select=id,status,external_participant_id&member_id=eq." + operation.member_id + "&whatsapp_group_id=eq." + operation.whatsapp_group_id + "&limit=1"),
       db("members?select=phone_e164,phone&id=eq." + operation.member_id + "&limit=1"),
     ]);
@@ -63,6 +63,82 @@ export default async () => {
     const membership = memberships[0];
     const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\D/g, "");
     const attempt = Number(operation.attempts || 0) + 1;
+
+    // Guard against the SQL expiry-enqueue bug: expiry removals must respect
+    // the configured grace period even if grace_ends_at was overwritten.
+    if (String(operation.idempotency_key || "").startsWith("expiry-remove:")) {
+      const subscriptions = group?.community_id
+        ? await db("subscriptions?select=id,status,plan_id,expires_at,grace_ends_at&member_id=eq." + operation.member_id + "&community_id=eq." + group.community_id + "&order=created_at.desc&limit=1")
+        : [];
+      const subscription = subscriptions[0];
+      const plans = subscription?.plan_id
+        ? await db("plans?select=grace_days&id=eq." + subscription.plan_id + "&limit=1")
+        : [];
+      const expiresAt = subscription?.expires_at ? new Date(subscription.expires_at).getTime() : Number.NaN;
+      const configuredGraceDays = Math.max(0, Number(plans[0]?.grace_days || 0));
+      const calculatedGraceEnd = Number.isFinite(expiresAt) ? expiresAt + configuredGraceDays * 86400000 : Number.NaN;
+      const storedGraceEnd = subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : Number.NaN;
+      const effectiveGraceEnd = Math.max(Number.isFinite(calculatedGraceEnd) ? calculatedGraceEnd : Number.NEGATIVE_INFINITY, Number.isFinite(storedGraceEnd) ? storedGraceEnd : Number.NEGATIVE_INFINITY);
+      const immediatelyRevoked = subscription && ["cancelled", "suspended"].includes(subscription.status);
+      const hasTimedSubscription = Boolean(subscription)
+        && ["active", "grace_period", "expired"].includes(subscription.status)
+        && Number.isFinite(effectiveGraceEnd);
+
+      if (!immediatelyRevoked && !hasTimedSubscription) {
+        await db("access_operations?id=eq." + operation.id, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "cancelled",
+            next_retry_at: null,
+            last_error: !subscription
+              ? "Remoção de expiração cancelada: não existe subscrição actual para validar o prazo."
+              : "Remoção de expiração cancelada: estado ou datas da subscrição não permitem validar a expiração.",
+            updated_at: nowIso,
+          }),
+          headers: { Prefer: "return=minimal" },
+        });
+        if (membership?.status === "removal_pending") {
+          await db("group_memberships?id=eq." + membership.id, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "joined", updated_at: nowIso }),
+            headers: { Prefer: "return=minimal" },
+          });
+        }
+        continue;
+      }
+
+      if (!immediatelyRevoked && effectiveGraceEnd > now.getTime()) {
+        await db("access_operations?id=eq." + operation.id, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "retry_pending",
+            next_retry_at: new Date(effectiveGraceEnd).toISOString(),
+            last_error: "A remoção foi adiada até ao fim da tolerância configurada no plano.",
+            updated_at: nowIso,
+          }),
+          headers: { Prefer: "return=minimal" },
+        });
+        if (membership?.status === "removal_pending") {
+          await db("group_memberships?id=eq." + membership.id, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "joined", updated_at: nowIso }),
+            headers: { Prefer: "return=minimal" },
+          });
+        }
+        await db("audit_logs", {
+          method: "POST",
+          body: JSON.stringify([{
+            member_id: operation.member_id,
+            action: "whatsapp.expiry_removal_delayed_by_grace_guard",
+            entity_type: "access_operation",
+            entity_id: operation.id,
+            new_values: { operation_status: "retry_pending", next_retry_at: new Date(effectiveGraceEnd).toISOString(), subscription_status: subscription.status },
+          }]),
+          headers: { Prefer: "return=minimal" },
+        });
+        continue;
+      }
+    }
 
     if (!group || !membership) {
       await db("access_operations?id=eq." + operation.id, {
@@ -148,7 +224,7 @@ export default async () => {
         method: "POST",
         body: JSON.stringify([{
           member_id: operation.member_id,
-          action: "whatsapp.member_removed_manually",
+          action: String(operation.idempotency_key || "").startsWith("expiry-remove:") ? "whatsapp.member_removed_after_expiry" : "whatsapp.member_removed_manually",
           entity_type: "group_membership",
           entity_id: membership.id,
           old_values: { status: membership.status },

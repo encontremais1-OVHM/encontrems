@@ -20,7 +20,8 @@ type WhatsAppStatus = {
   pairing_in_progress?: boolean;
   qr_expires_at?: string | null;
 };
-type Group = { id: string; name: string; description: string | null; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
+type Group = { id: string; name: string; description: string | null; group_type: "community" | "subgroup"; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
+type CommunityParticipant = {id:string;name:string;phone:string;email:string|null;admin:boolean;registered:boolean};
 
 export const Route = createFileRoute("/superadmin/whatsapp")({
   head: () => ({ meta: [{ title: "Integração WhatsApp — Encontre +" }, { name: "description", content: "Conecte o WhatsApp, importe grupos e sincronize os participantes da comunidade." }] }),
@@ -51,7 +52,7 @@ function WhatsappPage() {
   });
   const groups = useQuery({
     queryKey: ["whatsapp","groups"],
-    queryFn: () => apiRequest<{data:Group[]}>("/admin/whatsapp/groups"),
+    queryFn: () => apiRequest<{data:Group[];community_participants:CommunityParticipant[];community_participants_error:string|null;community_participants_checked_at:string|null}>("/admin/whatsapp/groups"),
     retry: false,
   });
 
@@ -177,7 +178,45 @@ function WhatsappPage() {
           <p className="mt-1 text-sm text-muted-foreground">Ligue o WhatsApp e sincronize para carregar os grupos reais da comunidade.</p>
         </div>}
       </section>
-      <p className="text-xs text-muted-foreground">Nota: a remoção automática de membros expirados exige que a subscrição ultrapasse também os 5 dias de tolerância e que a conta ligada seja administradora do grupo. Nenhuma remoção é executada nesta página sem validação do estado da subscrição.</p>
+      {groups.data?.data.some((group) => group.group_type === "community") && (
+        <section className="rounded-xl border bg-card p-5 shadow-card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-foreground">Participantes reais da Comunidade principal</h2>
+              <p className="text-sm text-muted-foreground">
+                Lista consultada directamente no WhatsApp, incluindo participantes que ainda não se inscreveram no portal.
+                {groups.data.community_participants_checked_at ? " Consulta: " + new Date(groups.data.community_participants_checked_at).toLocaleString("pt-PT") : ""}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => groups.refetch()} disabled={groups.isFetching}>
+              {groups.isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />} Actualizar lista
+            </Button>
+          </div>
+          {groups.data.community_participants_error && (
+            <ApiErrorNotice message={"Não foi possível consultar a lista em tempo real: " + groups.data.community_participants_error} onRetry={() => groups.refetch()} />
+          )}
+          {!groups.data.community_participants_error && groups.data.community_participants.length === 0 && (
+            <p className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">A consulta não devolveu participantes. Confirme que a conta WhatsApp está ligada e é administradora da Comunidade.</p>
+          )}
+          {groups.data.community_participants.length > 0 && (
+            <div className="max-h-96 divide-y overflow-y-auto rounded-lg border">
+              {groups.data.community_participants.map((participant) => (
+                <div key={participant.id} className="flex flex-wrap items-center gap-3 px-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-foreground">{participant.name}</p>
+                    <p className="text-xs text-muted-foreground">{participant.phone}{participant.email ? " · " + participant.email : ""}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {participant.admin && <Badge variant="success">Administrador</Badge>}
+                    <Badge variant={participant.registered ? "info" : "neutral"}>{participant.registered ? "Inscrito no portal" : "Sem inscrição no portal"}</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+      <p className="text-xs text-muted-foreground">Os 30 dias gratuitos começam após a confirmação de entrada na Comunidade principal. Sem renovação até ao fim desse período, a remoção é agendada automaticamente. Nas renovações pagas aplica-se a tolerância configurada no plano; a remoção só é concluída após verificação no WhatsApp.</p>
     </div>
   );
 }
