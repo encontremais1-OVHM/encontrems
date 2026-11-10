@@ -835,7 +835,7 @@ export default async (request) => {
         body:JSON.stringify({status:"cancelled",grace_ends_at:now,ended_at:now,updated_at:now}),
         headers:{Prefer:"return=minimal"},
       });
-      const groups = await sb("whatsapp_groups?select=id,external_group_id,group_type,is_active&community_id=eq." + subscription.community_id");
+      const groups = await sb("whatsapp_groups?select=id,external_group_id,group_type,is_active&community_id=eq." + subscription.community_id);
       const groupIds = groups.map((group) => group.id);
       const existingMemberships = groupIds.length
         ? await sb("group_memberships?select=id,whatsapp_group_id,status&member_id=eq." + memberId + "&whatsapp_group_id=in.(" + groupIds.join(",") + ")")
