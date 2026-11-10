@@ -202,10 +202,8 @@ function InscricaoPage() {
     if (!community || !firstSubgroup || !normalizedPhone) return;
     setSubmitError(null);
     setSubmitting(true);
-    // Open a blank tab synchronously from the user's click so browsers do not
-    // block the WhatsApp redirect after the asynchronous registration call.
-    const inviteWindow = window.open("about:blank", "_blank");
-    if (inviteWindow) inviteWindow.opener = null;
+    // No public WhatsApp invite is opened. The linked administrator account
+    // performs the addition after the registration has been recorded.
     try {
       const res = await createRegistration({
         community_id: community.id,
@@ -218,15 +216,9 @@ function InscricaoPage() {
         city: form.city.trim(),
         interests: form.interests,
       });
-      if (res.access?.community_invite_url && inviteWindow) {
-        inviteWindow.location.replace(res.access.community_invite_url);
-      } else {
-        inviteWindow?.close();
-      }
       setReceipt(res);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      inviteWindow?.close();
       if (err instanceof ApiError && err.status === 422 && err.body && typeof err.body === "object") {
         const apiErrors = (err.body as { errors?: Record<string, string[]> }).errors ?? {};
         const mapped: FieldErrors = {};
@@ -561,40 +553,33 @@ function Receipt({
       {receipt.access && (
         <section className="space-y-3 rounded-2xl border bg-card p-5">
           <div>
-            <h2 className="font-bold text-foreground">Entre primeiro na Comunidade WhatsApp</h2>
-            <p className="mt-1 text-sm text-muted-foreground">A sua inscrição está guardada. Abra o convite da Comunidade e, depois de entrar, escolha no próprio WhatsApp os subgrupos em que pretende participar.</p>
+            <h2 className="font-bold text-foreground">Acesso à Comunidade Encontre +</h2>
+            <p className="mt-1 text-sm text-muted-foreground">A sua inscrição foi registada. A conta administradora da Encontre + está a adicionar directamente o seu número à Comunidade e aos subgrupos seleccionados. Não precisa de abrir nem partilhar links de convite.</p>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-3 text-sm">
             <span className="font-medium text-foreground">{communityName} · Comunidade principal</span>
-            <span className={receipt.access.community === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{receipt.access.community === "joined" ? "Entrada confirmada" : "Convite disponível — entrada pendente"}</span>
+            <span className={receipt.access.community === "joined" ? "font-semibold text-success" : "font-semibold text-amber-600"}>{receipt.access.community === "joined" ? "Entrada confirmada pelo WhatsApp" : "Aguarda adição e confirmação"}</span>
           </div>
           {receipt.access.subgroups.length > 0 && (
             <div className="rounded-lg border px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Subgrupos indicados na inscrição</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Subgrupos seleccionados</p>
               <ul className="mt-2 space-y-1 text-sm text-foreground">
                 {receipt.access.subgroups.map((group) => (
                   <li key={group.id} className="flex items-center justify-between gap-3">
                     <span>{group.name}</span>
-                    <span className={group.status === "joined" ? "text-xs font-semibold text-success" : "text-xs text-muted-foreground"}>{group.status === "joined" ? "Entrada confirmada" : "Escolha dentro da Comunidade"}</span>
+                    <span className={group.status === "joined" ? "text-xs font-semibold text-success" : "text-xs text-muted-foreground"}>{group.status === "joined" ? "Entrada confirmada" : "A aguardar confirmação"}</span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
-          {receipt.access.community_invite_url ? (
-            <Button asChild>
-              <a href={receipt.access.community_invite_url} target="_blank" rel="noopener noreferrer">Abrir WhatsApp e entrar na Comunidade</a>
-            </Button>
-          ) : (
-            <p className="text-sm text-amber-700">O convite da Comunidade ainda não está disponível. Guarde o número da inscrição e contacte a equipa Encontre +.</p>
-          )}
-          <p className="text-xs text-muted-foreground">Guarde o número da inscrição para consultar o estado. A confirmação dos grupos é actualizada quando a participação é detectada no WhatsApp.</p>
+          <p className="text-sm text-muted-foreground">O estado será actualizado automaticamente assim que o WhatsApp confirmar a participação. Guarde o número da inscrição para acompanhar o processo.</p>
         </section>
       )}
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
       <p className="text-sm text-muted-foreground">
-        A adesão inicial é gratuita durante 30 dias. Depois de entrar na Comunidade WhatsApp, poderá escolher os subgrupos disponíveis directamente dentro dela.
+        A adesão inicial é gratuita durante 30 dias. A conta administradora Encontre + adicionará o seu número aos grupos autorizados.
       </p>
       <Button variant="outline" asChild>
         <Link to="/inscricao/estado" search={{ ref: receipt.reference }}>
