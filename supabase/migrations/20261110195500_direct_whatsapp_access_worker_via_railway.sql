@@ -87,7 +87,7 @@ returns integer
 language plpgsql
 security definer
 set search_path = ''
-as $function$$
+as $function$
 declare
   v_op record;
   v_secret text;
@@ -241,7 +241,7 @@ begin
 
   return v_dispatched;
 end;
-$$;
+$function$;
 revoke all on function public.process_pending_whatsapp_adds(uuid) from public, anon, authenticated;
 grant execute on function public.process_pending_whatsapp_adds(uuid) to service_role;
 
@@ -250,13 +250,13 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $function$$
+as $function$
 begin
   perform public.process_pending_whatsapp_adds(null);
 exception when others then
   raise warning 'WhatsApp access dispatch failed: %', sqlerrm;
 end;
-$$;
+$function$;
 revoke all on function public.dispatch_whatsapp_access_worker() from public, anon, authenticated;
 grant execute on function public.dispatch_whatsapp_access_worker() to service_role;
 
@@ -265,7 +265,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $function$$
+as $function$
 declare
   v_group public.whatsapp_groups%rowtype;
   v_key text;
@@ -317,7 +317,7 @@ begin
 
   return new;
 end;
-$$;
+$function$;
 revoke all on function public.enqueue_registration_community_add() from public, anon, authenticated;
 
 select cron.schedule(
