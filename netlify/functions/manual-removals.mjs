@@ -41,6 +41,8 @@ export default async () => {
   }
   const now = new Date();
   const nowIso = iso(now);
+  // Enqueue newly expired subscriptions on every scheduled run, not only the daily SQL fallback.
+  await db("rpc/enqueue_expired_whatsapp_removals", { method: "POST", body: "{}" });
   const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.remove&status=in.(queued,retry_pending,processing)&or=(idempotency_key.like.manual-remove%,idempotency_key.like.expiry-remove%)&order=created_at.asc&limit=100");
   const due = operations.filter((operation) =>
     (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) &&
