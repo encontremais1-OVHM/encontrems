@@ -37,7 +37,7 @@ async function bridge(path, body) {
 
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
-  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,created_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
   const groupIds = [...new Set(operations.map((operation) => operation.whatsapp_group_id))];
     const groupTypes = groupIds.length ? await db("whatsapp_groups?select=id,group_type&id=in.(" + groupIds.join(",") + ")") : [];
     const groupPriority = new Map(groupTypes.map((group) => [group.id, group.group_type === "community" ? 0 : 1]));
