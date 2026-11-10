@@ -106,7 +106,7 @@ async function ensureRegistrationAddOperation(memberId, groupId, membershipId, n
     if (["failed", "cancelled", "succeeded"].includes(existing[0].status)) {
       await sb("access_operations?id=eq." + existing[0].id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "queued", attempts: 0, last_error: null, next_retry_at: null, executed_at: null, updated_at: nowIso }),
+        body: JSON.stringify({ status: "queued", attempts: 0, external_operation_id: null, last_error: null, next_retry_at: null, executed_at: null, updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
     }
