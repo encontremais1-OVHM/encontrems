@@ -80,14 +80,11 @@ export default async () => {
       const storedGraceEnd = subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : Number.NaN;
       const effectiveGraceEnd = Math.max(calculatedGraceEnd, storedGraceEnd);
       const immediatelyRevoked = subscription && ["cancelled", "suspended"].includes(subscription.status);
-      const expiryIsValid = Boolean(subscription)
-        && (immediatelyRevoked || (
-          ["active", "grace_period", "expired"].includes(subscription.status)
-          && Number.isFinite(effectiveGraceEnd)
-          && effectiveGraceEnd <= now.getTime()
-        ));
+      const hasTimedSubscription = Boolean(subscription)
+        && ["active", "grace_period", "expired"].includes(subscription.status)
+        && Number.isFinite(effectiveGraceEnd);
 
-      if (!expiryIsValid) {
+      if (!immediatelyRevoked && !hasTimedSubscription) {
         await db("access_operations?id=eq." + operation.id, {
           method: "PATCH",
           body: JSON.stringify({
@@ -95,7 +92,28 @@ export default async () => {
             next_retry_at: null,
             last_error: !subscription
               ? "Remoção de expiração cancelada: não existe subscrição actual para validar o prazo."
-              : "Remoção de expiração cancelada: o período de acesso ou de tolerância ainda não terminou.",
+              : "Remoção de expiração cancelada: estado ou datas da subscrição não permitem validar a expiração.",
+            updated_at: nowIso,
+          }),
+          headers: { Prefer: "return=minimal" },
+        });
+        if (membership?.status === "removal_pending") {
+          await db("group_memberships?id=eq." + membership.id, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "joined", updated_at: nowIso }),
+            headers: { Prefer: "return=minimal" },
+          });
+        }
+        continue;
+      }
+
+      if (!immediatelyRevoked && effectiveGraceEnd > now.getTime()) {
+        await db("access_operations?id=eq." + operation.id, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "retry_pending",
+            next_retry_at: new Date(effectiveGraceEnd).toISOString(),
+            last_error: "A remoção foi adiada até ao fim da tolerância configurada no plano.",
             updated_at: nowIso,
           }),
           headers: { Prefer: "return=minimal" },
@@ -111,10 +129,10 @@ export default async () => {
           method: "POST",
           body: JSON.stringify([{
             member_id: operation.member_id,
-            action: "whatsapp.expiry_removal_blocked_by_grace_guard",
+            action: "whatsapp.expiry_removal_delayed_by_grace_guard",
             entity_type: "access_operation",
             entity_id: operation.id,
-            new_values: { operation_status: "cancelled", subscription_status: subscription?.status || null, effective_grace_end: Number.isFinite(effectiveGraceEnd) ? new Date(effectiveGraceEnd).toISOString() : null },
+            new_values: { operation_status: "retry_pending", next_retry_at: new Date(effectiveGraceEnd).toISOString(), subscription_status: subscription.status },
           }]),
           headers: { Prefer: "return=minimal" },
         });
