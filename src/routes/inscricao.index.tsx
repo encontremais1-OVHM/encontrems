@@ -544,6 +544,8 @@ function Receipt({
   const liveStatus = useQuery(registrationStatusQuery(receipt.reference, whatsapp));
   const liveAccess = liveStatus.data?.access;
   const communityJoined = liveAccess?.community === "active" || receipt.access?.community === "joined";
+  const communityFailed = liveAccess?.community === "failed";
+  const communityError = liveAccess?.community_error || null;
   const communityInviteUrl = liveAccess?.community_invite_url || receipt.access?.community_invite_url || null;
   const liveGroups = liveAccess?.groups ?? [];
   const currentSubgroups = (receipt.access?.subgroups ?? []).map((group) => {
@@ -593,11 +595,11 @@ function Receipt({
         <section className="space-y-3 rounded-2xl border bg-card p-5">
           <div>
             <h2 className="font-bold text-foreground">Acesso à Comunidade Encontre +</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{communityJoined ? "A sua entrada foi confirmada pelo WhatsApp." : "A conta administradora está a adicionar o seu número à Comunidade e aos subgrupos seleccionados. O WhatsApp será aberto automaticamente quando a entrada for confirmada."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{communityFailed ? "O WhatsApp não reconheceu o número indicado nesta inscrição. Corrija o número para podermos concluir a entrada." : communityJoined ? "A sua entrada foi confirmada pelo WhatsApp." : "A conta administradora está a adicionar o seu número à Comunidade e aos subgrupos seleccionados. O WhatsApp será aberto automaticamente quando a entrada for confirmada."}</p>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-3 text-sm">
             <span className="font-medium text-foreground">{communityName} · Comunidade principal</span>
-            <span className={communityJoined ? "font-semibold text-success" : "font-semibold text-amber-600"}>{communityJoined ? "Entrada confirmada pelo WhatsApp" : "Aguarda adição e confirmação"}</span>
+            <span className={communityJoined ? "font-semibold text-success" : "font-semibold text-amber-600"}>{communityFailed ? "Número não reconhecido no WhatsApp" : communityJoined ? "Entrada confirmada pelo WhatsApp" : "Aguarda adição e confirmação"}</span>
           </div>
           {receipt.access.subgroups.length > 0 && (
             <div className="rounded-lg border px-3 py-3">
@@ -614,6 +616,11 @@ function Receipt({
           )}
           <p className="text-sm text-muted-foreground">O estado será actualizado automaticamente assim que o WhatsApp confirmar a participação. Guarde o número da inscrição para acompanhar o processo.</p>
         </section>
+      )}
+      {communityFailed && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {communityError || "O WhatsApp não reconheceu o número indicado. Confirme o número completo com o indicativo +244 e tente novamente."}
+        </div>
       )}
       {communityJoined && communityInviteUrl && showManualOpen && (
         <Button className="w-full" onClick={() => window.open(communityInviteUrl, "_blank", "noopener,noreferrer")}>
