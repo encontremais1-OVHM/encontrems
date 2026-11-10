@@ -38,7 +38,12 @@ async function bridge(path, body) {
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
   const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
-  const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000)).slice(0, 2);
+  const groupIds = [...new Set(operations.map((operation) => operation.whatsapp_group_id))];
+    const groupTypes = groupIds.length ? await db("whatsapp_groups?select=id,group_type&id=in.(" + groupIds.join(",") + ")") : [];
+    const groupPriority = new Map(groupTypes.map((group) => [group.id, group.group_type === "community" ? 0 : 1]));
+    const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000))
+      .sort((a, b) => (groupPriority.get(a.whatsapp_group_id) ?? 2) - (groupPriority.get(b.whatsapp_group_id) ?? 2) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+      .slice(0, 2);
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
   try { connected = (await bridge("/status")).connected === true; } catch { /* queued additions remain pending */ }
@@ -82,7 +87,7 @@ async function processPendingAdditions(now, nowIso) {
       });
       await db("audit_logs", {
         method: "POST",
-        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_added_after_renewal", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "pending_invitation" }, new_values: { status: "joined", whatsapp_group_id: operation.whatsapp_group_id, operation_id: operation.id } }]),
+        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_access_confirmed", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "pending_invitation" }, new_values: { status: "joined", whatsapp_group_id: operation.whatsapp_group_id, operation_id: operation.id } }]),
         headers: { Prefer: "return=minimal" },
       });
       succeeded++;
@@ -162,6 +167,11 @@ async function processPendingAdditions(now, nowIso) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
         body: JSON.stringify({ status: terminal ? "failed" : "retry_pending", last_error: message, next_retry_at: terminal ? null : iso(new Date(now.getTime() + retryMinutes * 60 * 1000)), updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("group_memberships?id=eq." + membership.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: terminal ? "failed" : "pending_invitation", updated_at: nowIso, last_synced_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       pending++;
