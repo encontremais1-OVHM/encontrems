@@ -15,7 +15,7 @@ export type SubscriptionStatus =
 
 export type PaymentStatus = "pending" | "confirmed" | "rejected" | "cancelled";
 
-export type AccessStatus = "none" | "pending" | "active" | "removal_pending" | "removed" | "failed";
+export type AccessStatus = "none" | "pending" | "active" | "retrying" | "removal_pending" | "removed" | "failed";
 
 export type WhatsAppConnectionStatus = "not_configured" | "connected" | "disconnected" | "error";
 
@@ -183,6 +183,7 @@ export interface RegistrationReceipt {
 export interface RegistrationAccess {
   community: AccessStatus;
   community_joined_at?: string | null;
+  community_retry_at?: string | null;
   groups?: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
   subgroup: AccessStatus;
   /** Only sent by the backend once access is authorised. */
