@@ -41,7 +41,7 @@ export default async () => {
   }
   const now = new Date();
   const nowIso = iso(now);
-  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.remove&status=in.(queued,retry_pending,processing)&idempotency_key=like.manual-remove%&order=created_at.asc&limit=100");
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.remove&status=in.(queued,retry_pending,processing)&or=(idempotency_key.like.manual-remove%,idempotency_key.like.expiry-remove%)&order=created_at.asc&limit=100");
   const due = operations.filter((operation) =>
     (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) &&
     (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 10 * 60 * 1000)
@@ -156,6 +156,26 @@ export default async () => {
         }]),
         headers: { Prefer: "return=minimal" },
       });
+      const expiryMatch = /^expiry-remove:([0-9a-f-]{36}):/i.exec(String(operation.idempotency_key || ""));
+      if (expiryMatch) {
+        const finalized = await db("rpc/finalize_subscription_expiry", {
+          method: "POST",
+          body: JSON.stringify({ p_subscription_id: expiryMatch[1] }),
+        });
+        if (finalized === true) {
+          await db("audit_logs", {
+            method: "POST",
+            body: JSON.stringify([{
+              member_id: operation.member_id,
+              action: "subscription.expired_after_whatsapp_removal",
+              entity_type: "subscription",
+              entity_id: expiryMatch[1],
+              new_values: { status: "expired", confirmed_by: "live_whatsapp_participant_snapshot" },
+            }]),
+            headers: { Prefer: "return=minimal" },
+          });
+        }
+      }
       succeeded++;
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 300) : "WhatsApp participant removal failed";
