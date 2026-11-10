@@ -5,6 +5,7 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
 const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
 const KURSINHA_SECRET = process.env.KURSINHA_WEBHOOK_SECRET || "";
+const WHATSAPP_WEBHOOK_SECRET = process.env.WHATSAPP_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || "";
 const KURSINHA_PRODUCT_ID = process.env.KURSINHA_PRODUCT_ID || "6aefd6a5531bcee4ede064fb";
 const KURSINHA_CHECKOUT_URL = process.env.KURSINHA_CHECKOUT_URL || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
 const OWNER_EMAIL = "hgconnect1@gmail.com";
@@ -757,6 +758,69 @@ function verifyKursinhaSignature(rawBody, header) {
   return a.length === b.length && timingSafeEqual(a,b);
 }
 
+function verifyWhatsAppSignature(rawBody, header) {
+  const supplied = String(header || "").trim().toLowerCase();
+  if (WHATSAPP_WEBHOOK_SECRET.length < 32 || !/^[a-f0-9]{64}$/.test(supplied)) return false;
+  const expected = createHmac("sha256", WHATSAPP_WEBHOOK_SECRET).update(rawBody).digest();
+  const provided = Buffer.from(supplied, "hex");
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+async function handleWhatsAppWebhook(request) {
+  if (WHATSAPP_WEBHOOK_SECRET.length < 32) {
+    return json(503, { received: false, error: "whatsapp_webhook_secret_not_configured" });
+  }
+
+  const raw = await request.text();
+  if (!verifyWhatsAppSignature(raw, request.headers.get("x-encontre-signature"))) {
+    return json(401, { received: false, error: "invalid_whatsapp_webhook_signature" });
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return json(400, { received: false, error: "invalid_json" });
+  }
+
+  const event = String(payload?.event || "");
+  if (event !== "whatsapp.participant_added") {
+    // Other signed connection/participant events are acknowledged but do not
+    // change membership or subscription state.
+    return json(200, { received: true, ignored: true, event });
+  }
+
+  const eventId = String(payload?.event_id || "").trim();
+  const groupId = String(payload?.group_id || "").trim();
+  const participantJid = String(payload?.participant_jid || "").trim();
+  const action = String(payload?.action || "");
+  const phone = participantJid.endsWith("@s.whatsapp.net")
+    ? digits(participantJid.slice(0, -"@s.whatsapp.net".length))
+    : "";
+
+  if (!eventId || eventId.length > 128 || !groupId.endsWith("@g.us")
+      || action !== "add" || !/^\\d{8,15}$/.test(phone)) {
+    return json(400, { received: false, error: "invalid_whatsapp_participant_event" });
+  }
+
+  const occurredAt = payload?.occurred_at ? new Date(payload.occurred_at) : new Date();
+  if (Number.isNaN(occurredAt.getTime())) {
+    return json(400, { received: false, error: "invalid_whatsapp_event_timestamp" });
+  }
+
+  const result = await sb("rpc/confirm_whatsapp_participant", {
+    method: "POST",
+    body: JSON.stringify({
+      p_event_id: eventId,
+      p_external_group_id: groupId,
+      p_participant_phone: phone,
+      p_occurred_at: occurredAt.toISOString(),
+    }),
+  });
+
+  return json(200, { received: true, processed: true, result });
+}
+
 async function resolveKursinhaPayment(data, saleId, event) {
   const bySale = await sb("payments?select=id,member_id,subscription_id,amount,status,payment_type,payment_reference,provider_reference,metadata,created_at&provider=eq.kursinha&provider_reference=eq."+encodeURIComponent(saleId)+"&limit=1");
   if (bySale[0]) return bySale[0];
@@ -861,6 +925,7 @@ export default async (request) => {
     if (path === "/public/interests" && method === "GET") return json(200,await publicInterests());
 
     if (path === "/webhooks/kursinha" && method === "POST") return await handleKursinhaWebhook(request);
+    if (path === "/webhooks/whatsapp" && method === "POST") return await handleWhatsAppWebhook(request);
 
     const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET") || (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST");
     const user = await requireSuperAdmin(request);
