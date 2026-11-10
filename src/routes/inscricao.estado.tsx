@@ -243,7 +243,7 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communi
   groups: Array<{id:string;name:string;status:string;joined_at:string|null;removed_at?:string|null}>;
   authorized: boolean;
 }) {
-  const allSubgroupsJoined = subgroupNames.length > 0 && subgroupNames.every((name) => groups.some((group) => group.name === name && group.status === "joined"));
+  const allSubgroupsJoined = subgroupNames.every((name) => groups.some((group) => group.name === name && group.status === "joined"));
   if (!authorized) return null;
   const communityFailed = communityStatus === "failed";
   const communityRetrying = communityStatus === "retrying";
