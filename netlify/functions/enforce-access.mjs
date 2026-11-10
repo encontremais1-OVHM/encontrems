@@ -345,6 +345,121 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   return { groups_checked: groupsChecked, memberships_confirmed: rowsToConfirm.length, memberships_removed: rowsToRemove.length };
 }
 
+async function processManualRemovals(now, nowIso) {
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.remove&status=in.(queued,retry_pending,processing)&idempotency_key=like.manual-remove%&order=created_at.asc&limit=100");
+  const due = operations.filter((operation) =>
+    (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) &&
+    (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 10 * 60 * 1000)
+  ).slice(0, 10);
+  if (!due.length) return { succeeded: 0, pending: 0 };
+  let connected = false;
+  try { connected = (await bridge("/status")).connected === true; } catch {}
+  let succeeded = 0;
+  let pending = 0;
+  for (const operation of due) {
+    const [groups, memberships, members] = await Promise.all([
+      db("whatsapp_groups?select=id,external_group_id,group_type,is_active&id=eq." + operation.whatsapp_group_id + "&limit=1"),
+      db("group_memberships?select=id,status,external_participant_id&member_id=eq." + operation.member_id + "&whatsapp_group_id=eq." + operation.whatsapp_group_id + "&limit=1"),
+      db("members?select=phone_e164,phone&id=eq." + operation.member_id + "&limit=1"),
+    ]);
+    const group = groups[0];
+    const membership = memberships[0];
+    const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\D/g, "");
+    if (!group || !membership) {
+      await db("access_operations?id=eq." + operation.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"failed",last_error:"O grupo ou a associação do membro já não existe.",next_retry_at:null,updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      pending++;
+      continue;
+    }
+    if (membership.status === "removed") {
+      await db("access_operations?id=eq." + operation.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"succeeded",executed_at:nowIso,last_error:null,next_retry_at:null,updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      succeeded++;
+      continue;
+    }
+    const participant = String(membership.external_participant_id || (phone ? phone + "@s.whatsapp.net" : ""));
+    if (!/^\d+@s\.whatsapp\.net$/.test(participant)) {
+      await db("access_operations?id=eq." + operation.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"failed",last_error:"Não foi possível identificar o participante WhatsApp para remoção.",next_retry_at:null,updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      pending++;
+      continue;
+    }
+    await db("group_memberships?id=eq." + membership.id, {
+      method:"PATCH",
+      body:JSON.stringify({status:"removal_pending",external_participant_id:participant,updated_at:nowIso}),
+      headers:{Prefer:"return=minimal"},
+    });
+    if (!connected || !group.external_group_id) {
+      const attempt = Number(operation.attempts || 0) + 1;
+      const delay = Math.min(360, 5 * (2 ** Math.min(attempt - 1, 6)));
+      await db("access_operations?id=eq." + operation.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"retry_pending",attempts:attempt,last_error:!connected?"WhatsApp desconectado; a remoção será retomada quando a conta administradora voltar a ligar.":"Identificador externo do grupo indisponível.",next_retry_at:iso(new Date(now.getTime()+delay*60*1000)),updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      pending++;
+      continue;
+    }
+    const attempt = Number(operation.attempts || 0) + 1;
+    await db("access_operations?id=eq." + operation.id, {
+      method:"PATCH",
+      body:JSON.stringify({status:"processing",attempts:attempt,next_retry_at:null,updated_at:nowIso}),
+      headers:{Prefer:"return=minimal"},
+    });
+    try {
+      const endpoint = group.group_type === "community"
+        ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants"
+        : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants";
+      const matchesPhone = (snapshot) => (snapshot.participants || []).some((item) => {
+        const value = String(item.jid || item.phoneNumber || item.id || "");
+        const digitsOnly = value.split("@")[0].split(":")[0].replace(/\D/g, "");
+        return digitsOnly && digitsOnly === phone;
+      });
+      const before = await bridge(endpoint);
+      if (matchesPhone(before)) await bridge(endpoint + "/remove", {participant});
+      const after = await bridge(endpoint);
+      if (matchesPhone(after)) throw new Error("O WhatsApp ainda apresenta este número como participante após a remoção.");
+      await db("group_memberships?id=eq." + membership.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"removed",removed_at:nowIso,last_synced_at:nowIso,updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      await db("access_operations?id=eq." + operation.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"succeeded",executed_at:nowIso,last_error:null,next_retry_at:null,updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      await db("audit_logs", {
+        method:"POST",
+        body:JSON.stringify([{member_id:operation.member_id,action:"whatsapp.member_removed_manually",entity_type:"group_membership",entity_id:membership.id,old_values:{status:membership.status},new_values:{status:"removed",whatsapp_group_id:group.id,operation_id:operation.id,confirmed_by:"live_whatsapp_participant_snapshot"}}]),
+        headers:{Prefer:"return=minimal"},
+      });
+      succeeded++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0,300) : "WhatsApp participant removal failed";
+      const delay = /bot_must_be_(community|group)_admin|forbidden/i.test(message)
+        ? 30
+        : Math.min(360,5*(2**Math.min(attempt-1,6)));
+      await db("access_operations?id=eq." + operation.id, {
+        method:"PATCH",
+        body:JSON.stringify({status:"retry_pending",attempts:attempt,last_error:message,next_retry_at:iso(new Date(now.getTime()+delay*60*1000)),updated_at:nowIso}),
+        headers:{Prefer:"return=minimal"},
+      });
+      pending++;
+    }
+  }
+  return {succeeded,pending};
+}
+
 export default async (_request) => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     console.error("Expiry worker missing Supabase server configuration.");
@@ -353,6 +468,7 @@ export default async (_request) => {
 
   const now = new Date();
   const nowIso = iso(now);
+  const manualRemovals = await processManualRemovals(now, nowIso);
   const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);
   const additions = await processPendingAdditions(now, nowIso);
   const reminders = await processRenewalReminders(now, nowIso);
@@ -365,7 +481,7 @@ export default async (_request) => {
     "subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&status=in.(active,grace_period,expired,cancelled)&grace_ends_at=lt." + encodeURIComponent(nowIso) + "&limit=500",
   );
 
-  if (!expired.length) return Response.json({ ok: true, participant_sync_groups: participantSync.groups_checked, memberships_confirmed: participantSync.memberships_confirmed, additions_succeeded: additions.succeeded, additions_pending: additions.pending, renewal_reminders_sent: reminders.sent, renewal_reminders_pending: reminders.pending, subscriptions_checked: 0, removals_succeeded: 0, removals_pending: 0 });
+  if (!expired.length) return Response.json({ ok: true, participant_sync_groups: participantSync.groups_checked, memberships_confirmed: participantSync.memberships_confirmed, additions_succeeded: additions.succeeded, additions_pending: additions.pending, renewal_reminders_sent: reminders.sent, renewal_reminders_pending: reminders.pending, subscriptions_checked: 0, removals_succeeded: manualRemovals.succeeded, manual_removals_pending: manualRemovals.pending, removals_pending: manualRemovals.pending });
 
   let removalsSucceeded = 0;
   let removalsPending = 0;
@@ -547,7 +663,8 @@ export default async (_request) => {
     memberships_confirmed: participantSync.memberships_confirmed,
     memberships_removed: participantSync.memberships_removed || 0,
     subscriptions_checked: expired.length,
-    removals_succeeded: removalsSucceeded,
+    removals_succeeded: removalsSucceeded + manualRemovals.succeeded,
+    manual_removals_pending: manualRemovals.pending,
     additions_succeeded: additions.succeeded,
     additions_pending: additions.pending,
     renewal_reminders_sent: reminders.sent,
