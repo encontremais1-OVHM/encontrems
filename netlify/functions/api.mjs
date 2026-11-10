@@ -99,6 +99,66 @@ const digits = (value) => String(value || "").replace(/\D/g, "");
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const iso = (date) => date.toISOString();
 
+async function ensureRegistrationAddOperation(memberId, groupId, membershipId, nowIso) {
+  const key = "registration-add:" + membershipId;
+  const existing = await sb("access_operations?select=id,status&idempotency_key=eq." + encodeURIComponent(key) + "&limit=1");
+  if (existing[0]) {
+    if (["failed", "cancelled", "succeeded"].includes(existing[0].status)) {
+      await sb("access_operations?id=eq." + existing[0].id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "queued", attempts: 0, external_operation_id: null, last_error: null, next_retry_at: null, executed_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+    }
+    return;
+  }
+  await sb("access_operations?on_conflict=idempotency_key", {
+    method: "POST",
+    body: JSON.stringify([{ member_id: memberId, whatsapp_group_id: groupId, operation_type: "add", status: "queued", idempotency_key: key, attempts: 0, created_at: nowIso, updated_at: nowIso }]),
+    headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+  });
+}
+
+let whatsappImageBucketReady = false;
+async function persistWhatsAppGroupImage(externalGroupId, objectKey) {
+  try {
+    const picture = await bridge('/groups/' + encodeURIComponent(externalGroupId) + '/profile-picture');
+    const sourceUrl = typeof picture.profile_picture_url === 'string' ? picture.profile_picture_url : '';
+    if (!sourceUrl) return null;
+    const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error('WhatsApp profile image returned ' + response.status);
+    const contentType = String(response.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : contentType === 'image/jpeg' ? 'jpg' : null;
+    if (!extension) throw new Error('Unsupported WhatsApp profile image format.');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 2 * 1024 * 1024) throw new Error('WhatsApp profile image exceeds the 2 MB limit.');
+    const bucket = 'whatsapp-group-images';
+    if (!whatsappImageBucketReady) {
+      const bucketResponse = await fetch(SUPABASE_URL + '/storage/v1/bucket', {
+        method: 'POST',
+        headers: { apikey: SERVICE_KEY, authorization: 'Bearer ' + SERVICE_KEY, 'content-type': 'application/json' },
+        body: JSON.stringify({ id: bucket, name: bucket, public: true, file_size_limit: 2097152, allowed_mime_types: ['image/jpeg', 'image/png', 'image/webp'] }),
+      });
+      if (!bucketResponse.ok && bucketResponse.status !== 409) {
+        const detail = await bucketResponse.text();
+        throw new Error('Could not prepare public image storage: ' + detail.slice(0, 180));
+      }
+      whatsappImageBucketReady = true;
+    }
+    const objectPath = objectKey + '.' + extension;
+    const upload = await fetch(SUPABASE_URL + '/storage/v1/object/' + bucket + '/' + objectPath, {
+      method: 'POST',
+      headers: { apikey: SERVICE_KEY, authorization: 'Bearer ' + SERVICE_KEY, 'content-type': contentType, 'x-upsert': 'true' },
+      body: bytes,
+    });
+    if (!upload.ok) throw new Error('Could not store WhatsApp profile image (' + upload.status + ').');
+    return SUPABASE_URL + '/storage/v1/object/public/' + bucket + '/' + objectPath;
+  } catch (error) {
+    console.warn('WhatsApp group image sync skipped:', error instanceof Error ? error.message : 'unknown error');
+    return null;
+  }
+}
+
 async function publicCommunities() {
   const [communities, groups] = await Promise.all([
     sb("communities?select=id,name,slug,description,status,image_url,whatsapp_community_id&status=eq.active&order=name.asc"),
@@ -610,14 +670,16 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   const connectionId = await ensureConnection(communityId, "connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
-  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
+  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,image_url&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
+  const communityImage = await persistWhatsAppGroupImage(source.id, communityId + '/community');
+  const communityImageUrl = communityImage || existingContainer[0]?.image_url || source.profile_picture_url || null;
   if (existingContainer[0] && existingContainer[0].community_id !== communityId) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
   const containerRows = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
     method: "POST",
     body: JSON.stringify([{
       community_id: communityId, whatsapp_connection_id: connectionId, external_group_id: source.id,
       name: source.subject || platformCommunity.name, description: source.description || null, group_type: "community",
-      invite_link: source.invite_link || null, image_url: source.profile_picture_url || null, linked_parent_id: null,
+      invite_link: source.invite_link || null, image_url: communityImageUrl, linked_parent_id: null,
       is_active: existingContainer[0]?.is_active ?? false, sync_status: "synced",
     }]),
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -625,12 +687,14 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   if (!containerRows[0]?.id) throw new Error("O Supabase não confirmou a Comunidade WhatsApp.");
   await sb("communities?id=eq." + communityId, {
     method: "PATCH",
-    body: JSON.stringify({ whatsapp_community_id: source.id, image_url: source.profile_picture_url || null, updated_at: iso(new Date()) }),
+    body: JSON.stringify({ whatsapp_community_id: source.id, image_url: communityImageUrl, updated_at: iso(new Date()) }),
     headers: { Prefer: "return=minimal" },
   });
   groupsImported++;
   for (const group of source.subgroups || []) {
-    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    const subgroupImage = await persistWhatsAppGroupImage(group.id, communityId + '/' + group.id);
+    const subgroupImageUrl = subgroupImage || existingRows[0]?.image_url || group.profile_picture_url || null;
     if (existingRows[0] && existingRows[0].community_id !== communityId) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
     let inviteLink = null;
     try { inviteLink = (await bridge("/groups/" + encodeURIComponent(group.id) + "/invite-link")).invite_link || null; } catch { /* optional; requires admin role */ }
@@ -639,7 +703,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
       body: JSON.stringify([{
         community_id: communityId, whatsapp_connection_id: connectionId, external_group_id: group.id,
         name: group.subject || "Grupo WhatsApp", description: group.description || null, group_type: "subgroup",
-        invite_link: inviteLink, image_url: group.profile_picture_url || null, linked_parent_id: group.linked_parent_id || source.id,
+        invite_link: inviteLink, image_url: subgroupImageUrl, linked_parent_id: group.linked_parent_id || source.id,
         is_active: existingRows[0]?.is_active ?? false, sync_status: "synced",
       }]),
       headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -1084,6 +1148,9 @@ export default async (request) => {
             headers:{Prefer:"return=minimal"},
           });
           membership.status = "pending_invitation";
+        }
+        if (membership.status !== "joined") {
+          await ensureRegistrationAddOperation(member.id, target.group.id, membership.id, iso(now));
         }
         accessResults.push({
           id:target.group.id,

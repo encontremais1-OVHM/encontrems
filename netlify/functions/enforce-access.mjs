@@ -37,8 +37,31 @@ async function bridge(path, body) {
 
 const iso = (d) => d.toISOString();
 async function processPendingAdditions(now, nowIso) {
-  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,updated_at&operation_type=eq.add&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100");
-  const due = operations.filter((operation) => !String(operation.idempotency_key || "").startsWith("registration-add:") && (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000)).slice(0, 2);
+  const operations = await db("access_operations?select=id,member_id,whatsapp_group_id,idempotency_key,status,attempts,next_retry_at,created_at,updated_at,external_operation_id,last_error&operation_type=eq.add&status=in.(queued,retry_pending,processing,failed,cancelled)&order=created_at.asc&limit=100");
+  // One-time recovery for failed/cancelled initial registrations created by
+  // the previous worker. Permanent permission failures are not retried.
+  for (const operation of operations) {
+    const isInitial = String(operation.idempotency_key || "").startsWith("registration-add:");
+    const recoverable = ["failed", "cancelled"].includes(operation.status) && !operation.external_operation_id && isInitial && !/bot_must_be_(community|group)_admin|forbidden|403/i.test(String(operation.last_error || ""));
+    if (!recoverable) continue;
+    await db("access_operations?id=eq." + operation.id, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "queued", attempts: 0, external_operation_id: "registration-recovery-v1", last_error: "Recuperação única da inscrição inicial após correção do worker.", next_retry_at: null, updated_at: nowIso }),
+      headers: { Prefer: "return=minimal" },
+    });
+    operation.status = "queued";
+    operation.attempts = 0;
+    operation.external_operation_id = "registration-recovery-v1";
+    operation.last_error = null;
+    operation.next_retry_at = null;
+  }
+
+  const groupIds = [...new Set(operations.filter((operation) => ["queued", "retry_pending", "processing"].includes(operation.status)).map((operation) => operation.whatsapp_group_id))];
+    const groupTypes = groupIds.length ? await db("whatsapp_groups?select=id,group_type&id=in.(" + groupIds.join(",") + ")") : [];
+    const groupPriority = new Map(groupTypes.map((group) => [group.id, group.group_type === "community" ? 0 : 1]));
+    const due = operations.filter((operation) => (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) && (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 15 * 60 * 1000))
+      .sort((a, b) => (groupPriority.get(a.whatsapp_group_id) ?? 2) - (groupPriority.get(b.whatsapp_group_id) ?? 2) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+      .slice(0, 2);
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
   try { connected = (await bridge("/status")).connected === true; } catch { /* queued additions remain pending */ }
@@ -46,22 +69,12 @@ async function processPendingAdditions(now, nowIso) {
   let pending = 0;
   for (const operation of due) {
     const [groups, memberships] = await Promise.all([
-      db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active&id=eq." + operation.whatsapp_group_id + "&limit=1"),
+      db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,linked_parent_id&id=eq." + operation.whatsapp_group_id + "&limit=1"),
       db("group_memberships?select=id,status&member_id=eq." + operation.member_id + "&whatsapp_group_id=eq." + operation.whatsapp_group_id + "&limit=1"),
     ]);
     const group = groups[0];
     const membership = memberships[0];
-    // Initial registration is self-service: the member accepts the parent
-    // Community invite and chooses subgroups inside WhatsApp. Only operations
-    // created by an approved renewal may automatically re-add a removed member.
-    if (group?.is_active && !String(operation.idempotency_key || "").startsWith("renewal-add:")) {
-      await db("access_operations?id=eq." + operation.id, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "cancelled", last_error: "A entrada inicial é feita pelo convite da Comunidade; adição automática reservada à reentrada após renovação.", next_retry_at: null, updated_at: nowIso }),
-        headers: { Prefer: "return=minimal" },
-      });
-      continue;
-    }
+
     if (!group || !membership || !group.is_active) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
@@ -70,6 +83,20 @@ async function processPendingAdditions(now, nowIso) {
       });
       continue;
     }
+    if (group.group_type === "subgroup") {
+      const parentGroups = await db("whatsapp_groups?select=id&community_id=eq." + group.community_id + "&group_type=eq.community&is_active=eq.true&limit=1");
+      const parentMembership = parentGroups[0] ? (await db("group_memberships?select=id,status&member_id=eq." + operation.member_id + "&whatsapp_group_id=eq." + parentGroups[0].id + "&limit=1"))[0] : null;
+      if (parentMembership?.status !== "joined") {
+        await db("access_operations?id=eq." + operation.id, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "retry_pending", last_error: "Aguardando confirmação real da entrada na Comunidade principal antes de adicionar ao subgrupo.", next_retry_at: iso(new Date(now.getTime() + 2 * 60 * 1000)), updated_at: nowIso }),
+          headers: { Prefer: "return=minimal" },
+        });
+        pending++;
+        continue;
+      }
+    }
+
     if (membership.status === "joined") {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
@@ -78,7 +105,7 @@ async function processPendingAdditions(now, nowIso) {
       });
       await db("audit_logs", {
         method: "POST",
-        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_added_after_renewal", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "pending_invitation" }, new_values: { status: "joined", whatsapp_group_id: operation.whatsapp_group_id, operation_id: operation.id } }]),
+        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_access_confirmed", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "pending_invitation" }, new_values: { status: "joined", whatsapp_group_id: operation.whatsapp_group_id, operation_id: operation.id } }]),
         headers: { Prefer: "return=minimal" },
       });
       succeeded++;
@@ -126,13 +153,19 @@ async function processPendingAdditions(now, nowIso) {
       const participantsEndpoint = group.group_type === "community"
         ? "/communities/" + encodeURIComponent(group.external_group_id) + "/participants"
         : "/groups/" + encodeURIComponent(group.external_group_id) + "/participants";
-      await bridge(participantsEndpoint + "/add", { phone });
-      const participantSnapshot = await bridge(participantsEndpoint);
+      let addError = null;
+      try {
+        await bridge(participantsEndpoint + "/add", { phone });
+      } catch (error) {
+        addError = error instanceof Error ? error.message : "WhatsApp addition request failed";
+      }
+      // Verify the live snapshot even if the add response was incomplete.
+      const participantSnapshot = await bridge(participantsEndpoint + "?fresh=true");
       const confirmedInWhatsApp = (participantSnapshot.participants || []).some((participant) => {
         const jid = String(participant.jid || participant.phoneNumber || participant.id || "");
         return jid.split("@")[0].split(":")[0].replace(/\D/g, "") === phone;
       });
-      if (!confirmedInWhatsApp) throw new Error("WhatsApp ainda não confirmou a participação após a adição.");
+      if (!confirmedInWhatsApp) throw new Error(addError || "WhatsApp ainda não confirmou a participação após a adição.");
       await db("group_memberships?id=eq." + membership.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "joined", external_participant_id: phone + "@s.whatsapp.net", joined_at: nowIso, removed_at: null, last_synced_at: nowIso, updated_at: nowIso }),
@@ -152,6 +185,11 @@ async function processPendingAdditions(now, nowIso) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
         body: JSON.stringify({ status: terminal ? "failed" : "retry_pending", last_error: message, next_retry_at: terminal ? null : iso(new Date(now.getTime() + retryMinutes * 60 * 1000)), updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("group_memberships?id=eq." + membership.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: terminal ? "failed" : "pending_invitation", updated_at: nowIso, last_synced_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       pending++;
