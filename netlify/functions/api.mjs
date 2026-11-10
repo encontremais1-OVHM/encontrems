@@ -1215,7 +1215,7 @@ export default async (request) => {
       const [members,communities,groups,memberships,payments] = await Promise.all([
         sb("members?select=id,full_name,phone_e164,phone,created_at&id=eq."+sub.member_id+"&limit=1"),
         sb("communities?select=id,name,slug&id=eq."+sub.community_id+"&limit=1"),
-        sb("whatsapp_groups?select=id,name,group_type&community_id=eq."+sub.community_id+"&is_active=eq.true"),
+        sb("whatsapp_groups?select=id,name,group_type,external_group_id&community_id=eq."+sub.community_id+"&is_active=eq.true"),
         sb("group_memberships?select=whatsapp_group_id,status,joined_at,removed_at&member_id=eq."+sub.member_id+"&order=created_at.desc"),
         sb("payments?select=payment_reference,amount,status,created_at,paid_at,payment_type,provider,metadata&subscription_id=eq."+sub.id+"&order=created_at.desc&limit=1"),
       ]);
@@ -1227,6 +1227,15 @@ export default async (request) => {
         .filter(Boolean);
       const mainGroup = groups.find((g)=>g.group_type==="community") || null;
       const communityJoined = memberships.some((m)=>m.status==="joined" && groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="community"));
+      let communityInviteUrl = null;
+      if (communityJoined && mainGroup?.external_group_id) {
+        try {
+          const invite = await bridge(`/communities/${encodeURIComponent(mainGroup.external_group_id)}/invite-link`);
+          communityInviteUrl = invite?.invite_link || null;
+        } catch (error) {
+          console.warn("[registration-status] community invite link unavailable", error?.message || error);
+        }
+      }
       const subgroupInviteUrls = [];
       const subgroupAccessReady = selectedSubgroups.length > 0 && selectedSubgroups.every((g)=>memberships.some((m)=>m.whatsapp_group_id===g.id && m.status==="joined"));
       const subgroupInvite = null;
@@ -1250,7 +1259,7 @@ export default async (request) => {
           community:communityJoined ? "active" : "pending",
           community_joined_at:memberships.find((m)=>m.status==="joined" && groups.some((g)=>g.id===m.whatsapp_group_id && g.group_type==="community"))?.joined_at || null,
           subgroup:subgroupAccessReady ? "active" : "pending",
-          community_invite_url:null,
+          community_invite_url:communityInviteUrl,
           subgroup_invite_url:null,
           subgroup_invite_urls:[],
           groups:selectedSubgroups.map((g)=>{
