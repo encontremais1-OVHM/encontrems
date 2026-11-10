@@ -130,7 +130,7 @@ export const registrationStatusQuery = (reference: string, whatsapp: string) =>
       ),
     enabled: isApiConfigured() && reference.length > 0 && whatsapp.length > 0,
     retry: false,
-    refetchInterval: (query) => query.state.data?.access?.community === "active" && Boolean(query.state.data?.access?.community_invite_url) ? false : 5_000,
+    refetchInterval: (query) => query.state.data?.access?.community === "failed" || (query.state.data?.access?.community === "active" && Boolean(query.state.data?.access?.community_invite_url)) ? false : 5_000,
     refetchIntervalInBackground: false,
   });
 
