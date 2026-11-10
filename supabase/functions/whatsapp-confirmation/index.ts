@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
       member_id: `eq.${member.id}`,
       whatsapp_group_id: `eq.${group.id}`,
       operation_type: "eq.add",
-      status: "in.(queued,processing,retry_pending)",
+      status: "in.(queued,processing,retry_pending,failed)",
       order: "created_at.desc",
       limit: "1",
     });
