@@ -43,7 +43,9 @@ Substituir a condição por uma regra única e consistente:
 
 ## Worker de remoção
 
-Antes de chamar Baileys, voltar a verificar a subscrição mais recente e `grace_ends_at`. Se houve renovação ou a subscrição voltou a ficar elegível, cancelar a remoção pendente. Exigir que a conta conectada seja administradora. Depois da chamada, consultar a lista real do WhatsApp e só marcar `removed`/operação `succeeded` quando a ausência estiver confirmada. Se WhatsApp devolver 429/rate-overlimit, respeitar backoff e não repetir em loop.
+Foi adicionada nesta branch uma defesa temporária em `netlify/functions/manual-removals.mjs`: antes de remover uma operação `expiry-remove`, consulta a subscrição mais recente e o `grace_days` do plano. Calcula o prazo efectivo como o maior entre `grace_ends_at` e `expires_at + grace_days`; se ainda estiver dentro da tolerância, mantém a operação em `retry_pending` para a data correcta e repõe a membership como `joined`. Isto protege contra a função SQL actual que encurta `grace_ends_at`. Esta defesa é adicional, não substitui a correcção transaccional no banco.
+
+O worker deve ainda revalidar a subscrição imediatamente antes da chamada Baileys; se houve renovação ou a subscrição voltou a ficar elegível, cancelar/adiar a remoção. Exigir que a conta conectada seja administradora. Depois da chamada, consultar a lista real do WhatsApp e só marcar `removed`/operação `succeeded` quando a ausência estiver confirmada. Se WhatsApp devolver 429/rate-overlimit, respeitar backoff e não repetir em loop.
 
 ## Agendamento
 
