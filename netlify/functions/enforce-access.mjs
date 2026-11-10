@@ -350,7 +350,7 @@ async function processManualRemovals(now, nowIso) {
   const due = operations.filter((operation) =>
     (!operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= now.getTime()) &&
     (operation.status !== "processing" || !operation.updated_at || now.getTime() - new Date(operation.updated_at).getTime() >= 10 * 60 * 1000)
-  ).slice(0, 10);
+  ).slice(0, 2);
   if (!due.length) return { succeeded: 0, pending: 0 };
   let connected = false;
   try { connected = (await bridge("/status")).connected === true; } catch {}
@@ -424,10 +424,18 @@ async function processManualRemovals(now, nowIso) {
         const digitsOnly = value.split("@")[0].split(":")[0].replace(/\D/g, "");
         return digitsOnly && digitsOnly === phone;
       });
-      const before = await bridge(endpoint);
-      if (matchesPhone(before)) await bridge(endpoint + "/remove", {participant});
+      let removalError = null;
+      try {
+        await bridge(endpoint + "/remove", {participant});
+      } catch (error) {
+        removalError = error;
+      }
+      // A fresh snapshot is the source of truth, including when WhatsApp says
+      // the participant was already absent before the remove request.
       const after = await bridge(endpoint);
-      if (matchesPhone(after)) throw new Error("O WhatsApp ainda apresenta este número como participante após a remoção.");
+      if (matchesPhone(after)) {
+        throw removalError || new Error("O WhatsApp ainda apresenta este número como participante após a remoção.");
+      }
       await db("group_memberships?id=eq." + membership.id, {
         method:"PATCH",
         body:JSON.stringify({status:"removed",removed_at:nowIso,last_synced_at:nowIso,updated_at:nowIso}),
