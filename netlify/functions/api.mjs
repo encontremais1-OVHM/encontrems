@@ -938,7 +938,7 @@ export default async (request) => {
         return json(200,status);
       } catch (error) {
         return json(503,{
-          state:"disconnected",connected:false,has_qr:false,has_pairing_code:false,
+          state:"unavailable",connected:false,has_qr:false,has_pairing_code:false,
           last_error:error instanceof Error ? error.message : "Serviço WhatsApp indisponível.",
           code:"whatsapp_bridge_unavailable",
         });

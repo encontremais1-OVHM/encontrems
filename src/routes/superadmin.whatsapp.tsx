@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { apiRequest, describeApiError } from "@/lib/api/client";
 
 type WhatsAppStatus = {
-  state: "disconnected" | "connecting" | "connected" | "logged_out" | "error";
+  state: "disconnected" | "connecting" | "connected" | "logged_out" | "error" | "unavailable";
   connected: boolean;
   has_qr: boolean;
   has_pairing_code: boolean;
@@ -36,7 +36,10 @@ function WhatsappPage() {
   const status = useQuery({
     queryKey: ["whatsapp","status"],
     queryFn: () => apiRequest<WhatsAppStatus>("/admin/whatsapp/status"),
-    retry: false,
+    retry: 3,
+    retryDelay: attempt => Math.min(1000 * (2 ** attempt), 8000),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     refetchInterval: 5000,
   });
   const qr = useQuery({
@@ -73,6 +76,8 @@ function WhatsappPage() {
   const connected = Boolean(status.data?.connected);
   const actionError = connect.error || pair.error || disconnect.error || sync.error;
   const sessionActive = state === "connected" || state === "connecting" || state === "error";
+  const serviceUnavailable = state === "unavailable" || status.isError;
+  const statusLabel = status.isPending ? "A verificar" : serviceUnavailable ? "A verificar ligação" : connected ? "Ligado" : state === "connecting" ? "A ligar" : state === "error" ? "Erro" : "Desligado";
   const pairingBusy = Boolean(status.data?.pairing_in_progress) || pair.isPending;
 
   return (
@@ -85,20 +90,21 @@ function WhatsappPage() {
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-bold text-foreground">Estado da ligação</h2>
             <Badge variant={connected ? "success" : state === "connecting" ? "warning" : state === "error" ? "danger" : "neutral"}>
-              {connected ? "Ligado" : state === "connecting" ? "A ligar" : state === "error" ? "Erro" : "Desligado"}
+              {statusLabel}
             </Badge>
           </div>
           <div className="flex items-center gap-3 rounded-lg bg-muted/60 p-4">
             <span className="flex size-11 items-center justify-center rounded-xl bg-success-soft text-success"><MessageCircle className="size-5" /></span>
             <div className="min-w-0">
-              <p className="font-semibold text-foreground">{connected ? "WhatsApp conectado" : "Conta WhatsApp não conectada"}</p>
-              <p className="text-sm text-muted-foreground">{status.data?.phone ? "Número: +" + status.data.phone : "A sessão ficará guardada no volume seguro do Railway."}</p>
+              <p className="font-semibold text-foreground">{connected ? "WhatsApp conectado" : serviceUnavailable ? "Não foi possível confirmar a ligação" : status.isPending ? "A consultar a sessão guardada" : "Conta WhatsApp não conectada"}</p>
+              <p className="text-sm text-muted-foreground">{status.data?.phone ? "Número: +" + status.data.phone : serviceUnavailable ? "O serviço está temporariamente indisponível. A página voltará a consultar automaticamente; não gere outro QR Code." : "A sessão fica guardada no volume persistente do Railway."}</p>
             </div>
             <Button variant="ghost" size="icon" className="ml-auto shrink-0" onClick={() => status.refetch()} aria-label="Actualizar estado"><RefreshCw className="size-4" /></Button>
           </div>
           {status.data?.last_error && <p className="flex gap-2 text-sm text-destructive"><CircleAlert className="size-4 shrink-0" />{status.data.last_error}</p>}
+          {serviceUnavailable && <p className="text-sm text-muted-foreground">Não confunda falha temporária de comunicação com desconexão do WhatsApp. O painel não vai iniciar uma nova vinculação enquanto não conseguir consultar o estado real do serviço.</p>}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => connect.mutate()} disabled={connected || state === "connecting" || connect.isPending || pair.isPending || status.isPending}>
+            <Button onClick={() => connect.mutate()} disabled={connected || state === "connecting" || connect.isPending || pair.isPending || status.isPending || serviceUnavailable}>
               {connect.isPending ? <Loader2 className="animate-spin" /> : <QrCode />} {state === "connecting" ? "A aguardar leitura" : "Gerar QR Code"}
             </Button>
             <Button variant="outline" onClick={() => {
