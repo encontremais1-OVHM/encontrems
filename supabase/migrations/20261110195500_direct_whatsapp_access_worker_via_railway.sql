@@ -9,7 +9,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $function$
 begin
   if new.status in ('cancelled', 'suspended', 'expired') then
     return new;
@@ -33,7 +33,7 @@ begin
 
   return new;
 end;
-$;
+$function$;
 revoke all on function public.keep_subscription_pending_until_whatsapp_join() from public, anon, authenticated;
 
 drop trigger if exists trg_keep_subscription_pending_until_whatsapp_join on public.subscriptions;
@@ -66,14 +66,14 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $function$
 begin
   if new.status in ('pending', 'active', 'grace_period') then
     perform public.dispatch_whatsapp_access_worker();
   end if;
   return new;
 end;
-$;
+$function$;
 revoke all on function public.dispatch_whatsapp_access_for_subscription() from public, anon, authenticated;
 
 drop trigger if exists trg_dispatch_whatsapp_access_for_subscription on public.subscriptions;
@@ -87,7 +87,7 @@ returns integer
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $function$$
 declare
   v_op record;
   v_secret text;
@@ -250,7 +250,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $function$$
 begin
   perform public.process_pending_whatsapp_adds(null);
 exception when others then
@@ -265,7 +265,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $function$$
 declare
   v_group public.whatsapp_groups%rowtype;
   v_key text;
