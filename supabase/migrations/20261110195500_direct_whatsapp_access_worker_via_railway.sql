@@ -3,6 +3,85 @@
 alter table public.access_operations
   add column if not exists dispatch_request_id bigint;
 
+-- Do not start a trial until the member is actually confirmed in the main Community.
+create or replace function public.keep_subscription_pending_until_whatsapp_join()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if new.status in ('cancelled', 'suspended', 'expired') then
+    return new;
+  end if;
+
+  if new.whatsapp_activated_at is null and not exists (
+    select 1
+    from public.group_memberships gm
+    join public.whatsapp_groups wg on wg.id = gm.whatsapp_group_id
+    where gm.member_id = new.member_id
+      and wg.community_id = new.community_id
+      and wg.group_type = 'community'
+      and gm.status = 'joined'
+  ) then
+    new.status := 'pending';
+    new.starts_at := null;
+    new.expires_at := null;
+    new.grace_ends_at := null;
+    new.activated_at := null;
+  end if;
+
+  return new;
+end;
+$;
+revoke all on function public.keep_subscription_pending_until_whatsapp_join() from public, anon, authenticated;
+
+drop trigger if exists trg_keep_subscription_pending_until_whatsapp_join on public.subscriptions;
+create trigger trg_keep_subscription_pending_until_whatsapp_join
+before insert or update on public.subscriptions
+for each row execute function public.keep_subscription_pending_until_whatsapp_join();
+
+-- Repair existing trials that were started before a real WhatsApp Community join.
+update public.subscriptions s
+set status = 'pending',
+    starts_at = null,
+    expires_at = null,
+    grace_ends_at = null,
+    activated_at = null,
+    updated_at = pg_catalog.now()
+where s.status in ('active', 'grace_period')
+  and s.whatsapp_activated_at is null
+  and not exists (
+    select 1
+    from public.group_memberships gm
+    join public.whatsapp_groups wg on wg.id = gm.whatsapp_group_id
+    where gm.member_id = s.member_id
+      and wg.community_id = s.community_id
+      and wg.group_type = 'community'
+      and gm.status = 'joined'
+  );
+
+create or replace function public.dispatch_whatsapp_access_for_subscription()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if new.status in ('pending', 'active', 'grace_period') then
+    perform public.dispatch_whatsapp_access_worker();
+  end if;
+  return new;
+end;
+$;
+revoke all on function public.dispatch_whatsapp_access_for_subscription() from public, anon, authenticated;
+
+drop trigger if exists trg_dispatch_whatsapp_access_for_subscription on public.subscriptions;
+create trigger trg_dispatch_whatsapp_access_for_subscription
+after insert or update of status on public.subscriptions
+for each row execute function public.dispatch_whatsapp_access_for_subscription();
+
+
 create or replace function public.process_pending_whatsapp_adds(p_operation_id uuid default null)
 returns integer
 language plpgsql
@@ -72,8 +151,8 @@ begin
         from public.subscriptions s
         where s.member_id = ao.member_id
           and s.community_id = wg.community_id
-          and s.status in ('active', 'grace_period')
-          and (s.grace_ends_at is null or s.grace_ends_at >= pg_catalog.now())
+          and s.status in ('pending', 'active', 'grace_period')
+          and (s.status = 'pending' or s.grace_ends_at is null or s.grace_ends_at >= pg_catalog.now())
       )
       and (p_operation_id is null or ao.id = p_operation_id)
     order by ao.created_at asc
