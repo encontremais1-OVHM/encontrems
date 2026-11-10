@@ -1,6 +1,6 @@
-const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\\/+$/, "");
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\\/+$/, "");
+const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
 const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
 
 async function db(path, init = {}) {
@@ -61,7 +61,7 @@ export default async () => {
     ]);
     const group = groups[0];
     const membership = memberships[0];
-    const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\\D/g, "");
+    const phone = String(members[0]?.phone_e164 || members[0]?.phone || "").replace(/\D/g, "");
     const attempt = Number(operation.attempts || 0) + 1;
 
     if (!group || !membership) {
@@ -75,7 +75,7 @@ export default async () => {
     }
 
     const participant = String(membership.external_participant_id || (phone ? phone + "@s.whatsapp.net" : ""));
-    if (!/^\\d+@s\\.whatsapp\\.net$/.test(participant)) {
+    if (!/^\d+@s\.whatsapp\.net$/.test(participant)) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
         body: JSON.stringify({ status: "failed", last_error: "Não foi possível identificar o participante WhatsApp para remoção.", next_retry_at: null, updated_at: nowIso }),
@@ -127,7 +127,7 @@ export default async () => {
       const snapshot = await bridge(endpoint);
       const stillPresent = (snapshot.participants || []).some((item) => {
         const value = String(item.jid || item.phoneNumber || item.id || "");
-        const digitsOnly = value.split("@")[0].split(":")[0].replace(/\\D/g, "");
+        const digitsOnly = value.split("@")[0].split(":")[0].replace(/\D/g, "");
         return digitsOnly && digitsOnly === phone;
       });
       if (stillPresent) {
