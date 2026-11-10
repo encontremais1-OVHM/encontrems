@@ -20,7 +20,7 @@ type WhatsAppStatus = {
   pairing_in_progress?: boolean;
   qr_expires_at?: string | null;
 };
-type Group = { id: string; name: string; description: string | null; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
+type Group = { id: string; name: string; description: string | null; group_type: "community" | "subgroup"; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
 type CommunityParticipant = {id:string;name:string;phone:string;email:string|null;admin:boolean;registered:boolean};
 
 export const Route = createFileRoute("/superadmin/whatsapp")({
