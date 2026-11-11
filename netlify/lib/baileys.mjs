@@ -4,12 +4,12 @@ function normalizeApiUrl(value) {
   if (!value) return "";
   // Railway domains are sometimes entered without a scheme in Netlify.
   // fetch() requires an absolute URL, so default bare hosts to HTTPS.
-  const candidate = /^[a-z][a-z\\d+.-]*:\/\//i.test(value) ? value : "https://" + value;
+  const candidate = value.includes("://") ? value : "https://" + value;
   try {
     const parsed = new URL(candidate);
     if (!["https:", "http:"].includes(parsed.protocol)) return "";
     if (parsed.username || parsed.password || parsed.search || parsed.hash) return "";
-    return (parsed.origin + parsed.pathname).replace(/\\/+$/, "");
+    return parsed.origin;
   } catch {
     return "";
   }
