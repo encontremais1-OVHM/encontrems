@@ -1,9 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { baileysRequest } from "./_lib/baileys.mjs";
 const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
-const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
 const KURSINHA_SECRET = process.env.KURSINHA_WEBHOOK_SECRET || "";
 const KURSINHA_PRODUCT_ID = process.env.KURSINHA_PRODUCT_ID || "6aefd6a5531bcee4ede064fb";
 const KURSINHA_CHECKOUT_URL = process.env.KURSINHA_CHECKOUT_URL || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
@@ -47,21 +46,7 @@ async function requireSuperAdmin(request) {
 }
 
 async function bridge(path, method = "GET", body) {
-  if (!BRIDGE_URL || !BRIDGE_TOKEN) throw new Error("A ligação segura ao serviço WhatsApp ainda não está configurada no servidor.");
-  const response = await fetch(`${BRIDGE_URL}/v1${path}`, {
-    method,
-    headers: { authorization: `Bearer ${BRIDGE_TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(path === "/status" ? 5000 : 20000),
-  });
-  const text = await response.text();
-  const data = text ? (() => { try { return JSON.parse(text); } catch { return { message: text }; } })() : {};
-  if (!response.ok) {
-    const error = new Error(data.message || data.error || `WhatsApp bridge returned ${response.status}`);
-    error.statusCode = response.status;
-    throw error;
-  }
-  return data;
+  return baileysRequest(path, { method, body });
 }
 
 /**
@@ -451,7 +436,7 @@ async function adminDashboard() {
       revenue_total_kz: revenue, revenue_month_kz: revenueMonth, due_soon: dueSoon,
       removals_pending: operations.length,
     },
-    whatsapp: { status: waStatus === "connected" ? "connected" : waStatus === "error" ? "error" : "disconnected", adapter: "bider", last_seen_at: connection?.last_connected_at || null },
+    whatsapp: { status: waStatus === "connected" ? "connected" : waStatus === "error" ? "error" : "disconnected", adapter: "baileys", last_seen_at: connection?.last_connected_at || null },
     series: {
       member_growth: seriesByMonth(members,"created_at"),
       revenue_kz: seriesByMonth(paid,"paid_at").map((x) => ({...x,value: paid.filter((p) => String(p.paid_at || "").slice(0,7) === x.period).reduce((s,p) => s + Number(p.amount || 0),0)})),
@@ -605,9 +590,10 @@ async function confirmRenewalPayment(paymentId) {
     await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"processing",attempts:attempt,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     try{
       await bridge(groupRows[0]?.group_type==="community"?"/communities/"+encodeURIComponent(externalGroupId)+"/participants/add":"/groups/"+encodeURIComponent(externalGroupId)+"/participants/add","POST",{phone});
-      await sb("group_memberships?id=eq."+membership.id,{method:"PATCH",body:JSON.stringify({status:"joined",external_participant_id:phone+"@s.whatsapp.net",joined_at:iso(now),removed_at:null,last_synced_at:iso(now),updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
-      await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"succeeded",executed_at:iso(now),last_error:null,next_retry_at:null,updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
-      await sb("audit_logs",{method:"POST",body:JSON.stringify([{member_id:member.id,action:"whatsapp.member_readded_after_renewal",entity_type:"group_membership",entity_id:membership.id,old_values:{status:membership.status},new_values:{status:"joined",whatsapp_group_id:membership.whatsapp_group_id,payment_id:payment.id,operation_id:operation.id}}]),headers:{Prefer:"return=minimal"}});
+      // The Baileys response only means that WhatsApp accepted the request.
+      // The signed participant event (or a live snapshot) is the only source
+      // allowed to mark this membership as joined.
+      await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"retry_pending",last_error:"Pedido submetido; a aguardar confirmação real do participante no WhatsApp.",next_retry_at:iso(new Date(now.getTime()+15*60*1000)),updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
     }catch(error){
       const message=error instanceof Error?error.message.slice(0,300):"WhatsApp addition failed";
       await sb("access_operations?id=eq."+operation.id,{method:"PATCH",body:JSON.stringify({status:"retry_pending",last_error:message,next_retry_at:iso(new Date(now.getTime()+15*60*1000)),updated_at:iso(now)}),headers:{Prefer:"return=minimal"}});
