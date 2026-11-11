@@ -12,7 +12,7 @@ import { formatPhone } from "@/lib/format";
 
 type GroupContact = { id: string; name: string; phone: string; email: string | null; status: string };
 type Community = { id: string; name: string; status: string };
-type WhatsAppCommunity = { id: string; subject: string; description: string | null; profile_picture_url: string | null; subgroups: Array<{ id: string; subject: string; profile_picture_url: string | null }> };
+type WhatsAppCommunity = { id: string; subject: string; description: string | null; profile_picture_url: string | null; isAdmin: boolean; subgroups: Array<{ id: string; subject: string; profile_picture_url: string | null }> };
 type WhatsAppGroup = { id: string; name: string; description: string | null; external_group_id: string; community_id: string; group_type: "community" | "subgroup"; sync_status: string; is_active: boolean; image_url: string | null; linked_parent_id: string | null; participants: GroupContact[]; participants_count: number };
 
 export const Route = createFileRoute("/superadmin/grupos")({
@@ -116,7 +116,7 @@ function GruposPage() {
           <Select value={syncWhatsAppCommunityId} onValueChange={setSyncWhatsAppCommunityId}>
             <SelectTrigger disabled={!whatsappStatus.data?.connected}><SelectValue placeholder={whatsappStatus.data?.connected ? "Escolha a Comunidade WhatsApp" : "Ligue primeiro o WhatsApp"} /></SelectTrigger>
             <SelectContent>
-              {(whatsappCommunities.data?.communities ?? []).map(item => <SelectItem key={item.id} value={item.id}>{item.subject}</SelectItem>)}
+              {(whatsappCommunities.data?.communities ?? []).map(item => <SelectItem key={item.id} value={item.id} disabled={!item.isAdmin}>{item.subject}{item.isAdmin ? " · Administrador" : " · Sem permissões de administrador"}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -125,7 +125,7 @@ function GruposPage() {
         const selected = whatsappCommunities.data?.communities.find(item => item.id === syncWhatsAppCommunityId);
         return selected ? <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-3">
           {selected.profile_picture_url ? <img src={selected.profile_picture_url} alt="" className="size-12 rounded-xl object-cover" referrerPolicy="no-referrer" /> : <span className="flex size-12 items-center justify-center rounded-xl bg-background"><Users className="size-5" /></span>}
-          <div className="min-w-0"><p className="font-semibold text-foreground">{selected.subject}</p><p className="text-xs text-muted-foreground">{selected.subgroups.length} grupos internos detetados</p></div>
+          <div className="min-w-0"><p className="font-semibold text-foreground">{selected.subject}</p><p className="text-xs text-muted-foreground">{selected.subgroups.length} grupos internos detetados · {selected.isAdmin ? "A conta ligada é administradora" : "A conta ligada não é administradora"}</p></div>
         </div> : null;
       })()}
       <div className="flex justify-end">
