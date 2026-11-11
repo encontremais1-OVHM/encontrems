@@ -20,6 +20,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check Netlify function syntax
         run: |
+          node --check netlify/lib/baileys.mjs
           node --check netlify/functions/api.mjs
           node --check netlify/functions/enforce-access.mjs
           node --check netlify/functions/registration-access.mjs
