@@ -1,7 +1,6 @@
+import { baileysRequest } from "./_lib/baileys.mjs";
 const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const BRIDGE_URL = (process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
-const BRIDGE_TOKEN = process.env.WHATSAPP_BRIDGE_TOKEN || "";
 
 async function db(path, init = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -20,17 +19,7 @@ async function db(path, init = {}) {
 }
 
 async function bridge(path, body) {
-  if (!BRIDGE_URL || !BRIDGE_TOKEN) throw new Error("WhatsApp bridge credentials are not configured.");
-  const response = await fetch(`${BRIDGE_URL}/v1${path}`, {
-    method: body ? "POST" : "GET",
-    headers: { authorization: `Bearer ${BRIDGE_TOKEN}`, ...(body ? { "content-type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(7000),
-  });
-  const text = await response.text();
-  const data = text ? (() => { try { return JSON.parse(text); } catch { return {}; } })() : {};
-  if (!response.ok) throw new Error(data.message || data.error || `WhatsApp bridge returned ${response.status}`);
-  return data;
+  return baileysRequest(path, { method: body ? "POST" : "GET", body });
 }
 
 const iso = (date) => date.toISOString();
