@@ -624,7 +624,7 @@ async function ensureConnection(communityId, status) {
 }
 
 async function syncAllWhatsApp() {
-  const associations = await sb("communities?select=id,whatsapp_community_id&not.whatsapp_community_id=is.null&order=name.asc");
+  const associations = await sb("communities?select=id,whatsapp_community_id&whatsapp_community_id=not.is.null&order=name.asc");
   if (!associations.length) {
     return { status: 409, body: { message: "Ainda não existe uma Comunidade WhatsApp associada. Abra Comunidades e grupos WhatsApp e faça a primeira sincronização." } };
   }
