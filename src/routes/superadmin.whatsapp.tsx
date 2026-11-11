@@ -55,7 +55,7 @@ function WhatsappPage() {
   });
   const groups = useQuery({
     queryKey: ["whatsapp","groups"],
-    queryFn: () => apiRequest<{data:Group[];community_participants:CommunityParticipant[];community_participants_error:string|null;community_participants_checked_at:string|null}>("/admin/whatsapp/groups"),
+    queryFn: () => apiRequest<{data:Group[];community_participants:CommunityParticipant[];community_participants_available:boolean;community_participants_error:string|null;community_participants_checked_at:string|null}>("/admin/whatsapp/groups"),
     retry: false,
   });
 
@@ -201,8 +201,14 @@ function WhatsappPage() {
           {groups.data.community_participants_error && (
             <ApiErrorNotice message={"Não foi possível consultar a lista em tempo real: " + groups.data.community_participants_error} onRetry={() => groups.refetch()} />
           )}
-          {!groups.data.community_participants_error && groups.data.community_participants.length === 0 && (
-            <p className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">A consulta não devolveu participantes. Confirme que a conta WhatsApp está ligada e é administradora da Comunidade.</p>
+          {groups.data.community_participants_available === false && !connected && (
+            <p className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">A lista em tempo real ficará disponível assim que o WhatsApp estiver ligado. Os grupos já guardados continuam visíveis acima.</p>
+          )}
+          {groups.data.community_participants_available === false && connected && !groups.data.community_participants_error && (
+            <p className="rounded-lg border border-dashed p-5 text-center text-sm text-warning">A sessão aparece ligada, mas o serviço ainda não confirmou a disponibilidade da consulta de participantes. Actualize o estado e tente novamente.</p>
+          )}
+          {groups.data.community_participants_available && !groups.data.community_participants_error && groups.data.community_participants.length === 0 && (
+            <p className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">A consulta não devolveu participantes. Confirme que esta conta é administradora da Comunidade.</p>
           )}
           {groups.data.community_participants.length > 0 && (
             <div className="max-h-96 divide-y overflow-y-auto rounded-lg border">
