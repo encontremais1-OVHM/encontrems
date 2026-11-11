@@ -10,6 +10,7 @@ function normalizePath(path) {
   const picture = pathname.match(/^\/groups\/([^/]+)\/profile-picture$/);
 
   if (pathname === "/status") return { path: "/session", method: "GET" };
+  if (pathname === "/community") return { path: "/community", method: "GET" };
   if (pathname === "/connect") return { path: "/session/connect", method: "POST" };
   if (pathname === "/qr") return { path: "/session/qr", method: "GET" };
   if (pathname === "/pairing-code") return { path: "/session/pairing-code", method: "POST" };
