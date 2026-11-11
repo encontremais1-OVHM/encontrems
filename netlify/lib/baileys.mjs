@@ -57,7 +57,7 @@ function normalizeResponse(path, payload) {
       has_qr: data.qrAvailable === true,
       has_pairing_code: data.pairingCodeAvailable === true || Boolean(data.pairingCode),
       pairing_in_progress: data.pairingCodeAvailable === true,
-      last_error: null,
+      last_error: data.lastError || data.last_error || null,
       phone: data.phone || null,
     };
   }
