@@ -120,7 +120,7 @@ function WhatsappPage() {
           <p className="text-sm text-muted-foreground">Introduza o número da conta WhatsApp com indicativo internacional, apenas dígitos. O código deve ser inserido em WhatsApp → Dispositivos associados → Associar com número de telefone.</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="244923000000" inputMode="numeric" aria-label="Número com indicativo" />
-            <Button variant="outline" onClick={() => pair.mutate()} disabled={pairingBusy || connected || state === "connecting" || serviceUnavailable || status.isPending || phone.replace(/\D/g,"").length < 8}>
+            <Button variant="outline" onClick={() => pair.mutate()} disabled={pairingBusy || connected || serviceUnavailable || status.isPending || phone.replace(/\D/g,"").length < 8}>
               {pair.isPending ? <Loader2 className="animate-spin" /> : <Smartphone />} Gerar código
             </Button>
           </div>
