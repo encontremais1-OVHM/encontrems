@@ -650,6 +650,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   const source = (sourceResult.communities || []).find((item) => item.id === whatsappCommunityId);
   if (!platformCommunity) throw new Error("Comunidade da plataforma não encontrada.");
   if (!source) throw new Error("A Comunidade WhatsApp selecionada já não está disponível na conta ligada.");
+  if (source.isAdmin !== true) throw new Error("A conta WhatsApp ligada não é administradora desta Comunidade. Promova a conta a administradora antes de sincronizar.");
   if (platformCommunity.whatsapp_community_id && platformCommunity.whatsapp_community_id !== source.id) throw new Error("Esta comunidade da plataforma já está associada a outra Comunidade WhatsApp.");
   const connectionId = await ensureConnection(communityId, "connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
@@ -983,7 +984,13 @@ export default async (request) => {
     if (path === "/admin/whatsapp/status" && method === "GET") {
       try {
         const status = await bridge("/status");
-        return json(200,status);
+        if (!status.connected) return json(200,status);
+        try {
+          const community = await bridge("/community");
+          return json(200,{...status,community_is_admin:community.isAdmin===true,community_name:community.subject||null});
+        } catch (error) {
+          return json(200,{...status,community_is_admin:null,community_check_error:error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal."});
+        }
       } catch (error) {
         return json(503,{
           state:"unavailable",connected:false,has_qr:false,has_pairing_code:false,
