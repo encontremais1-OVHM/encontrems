@@ -19,6 +19,9 @@ type WhatsAppStatus = {
   phone: string | null;
   pairing_in_progress?: boolean;
   qr_expires_at?: string | null;
+  community_is_admin?: boolean | null;
+  community_name?: string | null;
+  community_check_error?: string;
 };
 type Group = { id: string; name: string; description: string | null; group_type: "community" | "subgroup"; sync_status: string; participants: {id:string;name:string;phone:string;email:string|null;status:string}[]; participants_count:number; external_group_id: string; is_active:boolean };
 type CommunityParticipant = {id:string;name:string;phone:string;email:string|null;admin:boolean;registered:boolean};
@@ -103,6 +106,9 @@ function WhatsappPage() {
             <Button variant="ghost" size="icon" className="ml-auto shrink-0" onClick={() => status.refetch()} aria-label="Actualizar estado"><RefreshCw className="size-4" /></Button>
           </div>
           {status.data?.last_error && <p className="flex gap-2 text-sm text-destructive"><CircleAlert className="size-4 shrink-0" />{status.data.last_error}</p>}
+          {connected && status.data?.community_is_admin === false && <p className="flex gap-2 text-sm text-destructive"><CircleAlert className="size-4 shrink-0" />A conta está ligada, mas não é administradora da Comunidade principal{status.data.community_name ? " (" + status.data.community_name + ")" : ""}. Promova esta conta a administradora no WhatsApp para permitir operações de gestão.</p>}
+          {connected && status.data?.community_is_admin === null && status.data?.community_check_error && <p className="flex gap-2 text-sm text-warning"><CircleAlert className="size-4 shrink-0" />A sessão está ligada, mas não foi possível validar as permissões da Comunidade principal: {status.data.community_check_error}</p>}
+          {connected && status.data?.community_is_admin === true && <p className="text-sm text-success">A conta ligada é administradora da Comunidade principal.</p>}
           {serviceUnavailable && <p className="text-sm text-muted-foreground">Não confunda falha temporária de comunicação com desconexão do WhatsApp. O painel não vai iniciar uma nova vinculação enquanto não conseguir consultar o estado real do serviço.</p>}
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => connect.mutate()} disabled={connected || state === "connecting" || connect.isPending || pair.isPending || status.isPending || serviceUnavailable}>
