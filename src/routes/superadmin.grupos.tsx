@@ -30,7 +30,21 @@ function GruposPage() {
 
   const query = useQuery({ queryKey: ["whatsapp", "groups"], queryFn: () => apiRequest<{ data: WhatsAppGroup[] }>("/admin/whatsapp/groups"), retry: 1, staleTime: 60_000, refetchOnWindowFocus: false });
   const communities = useQuery({ queryKey: ["admin", "resource", "communities"], queryFn: () => apiRequest<{ data: Community[] }>("/admin/resources/communities"), retry: 1, staleTime: 60_000, refetchOnWindowFocus: false });
-  const whatsappCommunities = useQuery({ queryKey: ["whatsapp", "communities"], queryFn: () => apiRequest<{ communities: WhatsAppCommunity[] }>("/admin/whatsapp/communities"), retry: 1, staleTime: 120_000, refetchOnWindowFocus: false });
+  const whatsappStatus = useQuery({
+    queryKey: ["whatsapp", "status"],
+    queryFn: () => apiRequest<{ connected: boolean; state: string }>("/admin/whatsapp/status"),
+    retry: 1,
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+  });
+  const whatsappCommunities = useQuery({
+    queryKey: ["whatsapp", "communities"],
+    queryFn: () => apiRequest<{ communities: WhatsAppCommunity[] }>("/admin/whatsapp/communities"),
+    enabled: Boolean(whatsappStatus.data?.connected),
+    retry: 1,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
 
   // Restore the saved platform ↔ WhatsApp association after every page load.
   // The database mapping is the source of truth; a reload must not require a new sync.
@@ -80,13 +94,14 @@ function GruposPage() {
     </div>
     {query.isError && <ApiErrorNotice message={describeApiError(query.error)} onRetry={() => query.refetch()} />}
     {communities.isError && <ApiErrorNotice message={describeApiError(communities.error)} onRetry={() => communities.refetch()} />}
+    {whatsappStatus.isError && <ApiErrorNotice message={describeApiError(whatsappStatus.error)} onRetry={() => whatsappStatus.refetch()} />}
     {whatsappCommunities.isError && <ApiErrorNotice message={describeApiError(whatsappCommunities.error)} onRetry={() => whatsappCommunities.refetch()} />}
     {actionError && <ApiErrorNotice message={actionError} onRetry={() => setActionError(null)} />}
 
     <section className="rounded-xl border bg-card p-5 shadow-card space-y-4">
       <div>
         <h2 className="font-semibold text-foreground">Sincronizar uma Comunidade WhatsApp</h2>
-        <p className="mt-1 text-sm text-muted-foreground">A associação já guardada é recuperada automaticamente quando abre esta página. Só volte a sincronizar se estiver a associar uma comunidade diferente ou a importar alterações recentes do WhatsApp.</p>
+        <p className="mt-1 text-sm text-muted-foreground">A associação já guardada é recuperada automaticamente quando abre esta página. As comunidades disponíveis são carregadas da conta WhatsApp ligada; primeiro ligue a sessão no separador Integração com o WhatsApp.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1.5">
@@ -99,7 +114,7 @@ function GruposPage() {
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-foreground">Comunidade encontrada no WhatsApp</label>
           <Select value={syncWhatsAppCommunityId} onValueChange={setSyncWhatsAppCommunityId}>
-            <SelectTrigger><SelectValue placeholder="Escolha a Comunidade WhatsApp" /></SelectTrigger>
+            <SelectTrigger disabled={!whatsappStatus.data?.connected}><SelectValue placeholder={whatsappStatus.data?.connected ? "Escolha a Comunidade WhatsApp" : "Ligue primeiro o WhatsApp"} /></SelectTrigger>
             <SelectContent>
               {(whatsappCommunities.data?.communities ?? []).map(item => <SelectItem key={item.id} value={item.id}>{item.subject}</SelectItem>)}
             </SelectContent>
@@ -114,7 +129,7 @@ function GruposPage() {
         </div> : null;
       })()}
       <div className="flex justify-end">
-        <Button onClick={() => sync.mutate()} disabled={!syncCommunity || !syncWhatsAppCommunityId || sync.isPending || whatsappCommunities.isPending}>
+        <Button onClick={() => sync.mutate()} disabled={!whatsappStatus.data?.connected || !syncCommunity || !syncWhatsAppCommunityId || sync.isPending || whatsappCommunities.isPending}>
           {sync.isPending ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
           {sync.isPending ? "A sincronizar…" : "Sincronizar Comunidade"}
         </Button>
