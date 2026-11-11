@@ -1,4 +1,21 @@
-const API_URL = (process.env.BAILEYS_API_URL || process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
+const RAW_API_URL = (process.env.BAILEYS_API_URL || process.env.WHATSAPP_BRIDGE_URL || "").trim();
+
+function normalizeApiUrl(value) {
+  if (!value) return "";
+  // Railway domains are sometimes entered without a scheme in Netlify.
+  // fetch() requires an absolute URL, so default bare hosts to HTTPS.
+  const candidate = /^[a-z][a-z\\d+.-]*:\/\//i.test(value) ? value : "https://" + value;
+  try {
+    const parsed = new URL(candidate);
+    if (!["https:", "http:"].includes(parsed.protocol)) return "";
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return "";
+    return (parsed.origin + parsed.pathname).replace(/\\/+$/, "");
+  } catch {
+    return "";
+  }
+}
+
+const API_URL = normalizeApiUrl(RAW_API_URL);
 const API_KEY = process.env.BAILEYS_API_KEY || process.env.WHATSAPP_BRIDGE_TOKEN || "";
 
 function normalizePath(path) {
@@ -54,7 +71,8 @@ function normalizeResponse(path, payload) {
 }
 
 export async function baileysRequest(path, options = {}) {
-  if (!API_URL || !API_KEY) throw new Error("BAILEYS_API_URL e BAILEYS_API_KEY têm de estar configurados nas variáveis de servidor da Netlify.");
+  if (!API_URL) throw new Error("BAILEYS_API_URL inválida. Configure o domínio Railway com ou sem https:// (ex.: encontre-bailyler-23-production.up.railway.app).");
+  if (!API_KEY) throw new Error("BAILEYS_API_KEY tem de estar configurada nas variáveis de servidor da Netlify.");
   const mapped = normalizePath(path);
   const method = options.method || mapped.method;
   let body = options.body;
