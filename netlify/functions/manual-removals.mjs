@@ -1,4 +1,4 @@
-import { baileysRequest } from "./_lib/baileys.mjs";
+import { baileysRequest } from "../lib/baileys.mjs";
 const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
