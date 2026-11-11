@@ -623,6 +623,24 @@ async function ensureConnection(communityId, status) {
   return created[0].id;
 }
 
+async function syncAllWhatsApp() {
+  const associations = await sb("communities?select=id,whatsapp_community_id&not.whatsapp_community_id=is.null&order=name.asc");
+  if (!associations.length) {
+    return { status: 409, body: { message: "Ainda não existe uma Comunidade WhatsApp associada. Abra Comunidades e grupos WhatsApp e faça a primeira sincronização." } };
+  }
+  const total = { communities_synced: 0, groups_imported: 0, subgroups_imported: 0, contacts_imported: 0, participants_skipped: 0 };
+  for (const association of associations) {
+    if (!association.whatsapp_community_id) continue;
+    const result = await syncWhatsApp(association.id, association.whatsapp_community_id);
+    total.communities_synced += Number(result.communities_imported || 0);
+    total.groups_imported += Number(result.groups_imported || 0);
+    total.subgroups_imported += Number(result.subgroups_imported || 0);
+    total.contacts_imported += Number(result.contacts_imported || 0);
+    total.participants_skipped += Number(result.participants_skipped || 0);
+  }
+  return { status: 200, body: total };
+}
+
 async function syncWhatsApp(communityId, whatsappCommunityId) {
   const [platformRows, sourceResult] = await Promise.all([
     sb("communities?select=id,name,whatsapp_community_id&id=eq." + communityId + "&limit=1"),
@@ -1047,6 +1065,10 @@ export default async (request) => {
     if (path === "/admin/whatsapp/communities" && method === "GET") return json(200,await bridge("/communities"));
     if (path === "/admin/whatsapp/sync" && method === "POST") {
       const body = await request.json().catch(() => ({}));
+      if (!body.community_id && !body.whatsapp_community_id) {
+        const result = await syncAllWhatsApp();
+        return json(result.status, result.body);
+      }
       const communityId = isUuid(body.community_id) ? body.community_id : null;
       const whatsappCommunityId = String(body.whatsapp_community_id || "");
       if (!communityId || !whatsappCommunityId.endsWith("@g.us")) return json(422,{message:"Escolha a comunidade da plataforma e a Comunidade do WhatsApp."});
