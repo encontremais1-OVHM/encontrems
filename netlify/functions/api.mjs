@@ -1009,7 +1009,18 @@ export default async (request) => {
       let communityParticipants = [];
       let communityParticipantsError = null;
       let communityParticipantsCheckedAt = null;
+      let communityParticipantsAvailable = false;
       if (communityGroup) {
+        // Stored group records remain visible while WhatsApp is waiting for pairing.
+        // Only call the live participants endpoint after the service confirms an open session.
+        try {
+          const session = await bridge("/status");
+          communityParticipantsAvailable = session.connected === true;
+        } catch {
+          communityParticipantsAvailable = false;
+        }
+      }
+      if (communityGroup && communityParticipantsAvailable) {
         try {
           const live = await bridge("/communities/" + encodeURIComponent(communityGroup.external_group_id) + "/participants?fresh=true");
           communityParticipants = (live.participants || []).map((participant) => {
@@ -1044,6 +1055,7 @@ export default async (request) => {
             : memberships.filter((m)=>m.whatsapp_group_id===g.id && m.status==="joined").length,
         })),
         community_participants:communityParticipants,
+        community_participants_available:communityParticipantsAvailable,
         community_participants_error:communityParticipantsError,
         community_participants_checked_at:communityParticipantsCheckedAt,
       });
