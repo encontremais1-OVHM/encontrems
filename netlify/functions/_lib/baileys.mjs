@@ -1,13 +1,13 @@
-const API_URL = (process.env.BAILEYS_API_URL || process.env.WHATSAPP_BRIDGE_URL || "").replace(/\\/+$/, "");
+const API_URL = (process.env.BAILEYS_API_URL || process.env.WHATSAPP_BRIDGE_URL || "").replace(/\/+$/, "");
 const API_KEY = process.env.BAILEYS_API_KEY || process.env.WHATSAPP_BRIDGE_TOKEN || "";
 
 function normalizePath(path) {
   const url = new URL(path, "https://internal.invalid");
   const pathname = url.pathname;
-  const communityParticipants = pathname.match(/^\\/communities\\/([^/]+)\\/participants(?:\\/(add|remove))?$/);
-  const groupParticipants = pathname.match(/^\\/groups\\/([^/]+)\\/participants(?:\\/(add|remove))?$/);
-  const invite = pathname.match(/^\\/(?:communities|groups)\\/([^/]+)\\/invite-link$/);
-  const picture = pathname.match(/^\\/groups\\/([^/]+)\\/profile-picture$/);
+  const communityParticipants = pathname.match(/^\/communities\/([^/]+)\/participants(?:\/(add|remove))?$/);
+  const groupParticipants = pathname.match(/^\/groups\/([^/]+)\/participants(?:\/(add|remove))?$/);
+  const invite = pathname.match(/^\/(?:communities|groups)\/([^/]+)\/invite-link$/);
+  const picture = pathname.match(/^\/groups\/([^/]+)\/profile-picture$/);
 
   if (pathname === "/status") return { path: "/session", method: "GET" };
   if (pathname === "/connect") return { path: "/session/connect", method: "POST" };
@@ -46,9 +46,9 @@ function normalizeResponse(path, payload) {
   if (path === "/qr") return { qr_data_url: data.qrDataUrl, expires_in_seconds: data.expiresInSeconds || 60 };
   if (path === "/pairing-code") return { pairing_code: data.pairingCode };
   if (path === "/communities") return { communities: data.communities || [] };
-  if (/\\/participants(?:\\/(?:add|remove))?$/.test(path)) return { participants: data.participants || [], ...data };
-  if (/\\/invite-link$/.test(path)) return { invite_link: data.inviteLink || null };
-  if (/\\/profile-picture$/.test(path)) return { profile_picture_url: data.profilePictureUrl || null };
+  if (/\/participants(?:\/(?:add|remove))?$/.test(path)) return { participants: data.participants || [], ...data };
+  if (/\/invite-link$/.test(path)) return { invite_link: data.inviteLink || null };
+  if (/\/profile-picture$/.test(path)) return { profile_picture_url: data.profilePictureUrl || null };
   return data;
 }
 
@@ -58,7 +58,7 @@ export async function baileysRequest(path, options = {}) {
   const method = options.method || mapped.method;
   let body = options.body;
   if (path === "/pairing-code" && body) body = { phoneNumber: body.phone };
-  if (/\\/participants\\/(?:add|remove)$/.test(path) && body) {
+  if (/\/participants\/(?:add|remove)$/.test(path) && body) {
     const rawPhone = body.phone || body.phoneNumber || body.participant || "";
     const phoneNumber = String(rawPhone).replace(/[^0-9]/g, "");
     body = { phoneNumber };
