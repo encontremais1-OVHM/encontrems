@@ -746,7 +746,7 @@ async function canSafelyReuseArchivedWhatsAppGroup(groupRow, checkCache) {
   return check;
 }
 
-async function syncWhatsApp(communityId, whatsappCommunityId) {
+async function syncWhatsApp(communityId, whatsappCommunityId, user = null) {
   const archivedCommunityReuseChecks = new Map();
   const archivedReassignments = [];
   const [platformRows, sourceResult] = await Promise.all([
@@ -862,18 +862,15 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
     });
     contactsImported += memberships.length;
   }
-  if (archivedReassignments.length) {
-    await sb("audit_logs", {
-      method: "POST",
-      body: JSON.stringify(archivedReassignments.map((item) => ({
-        action: "whatsapp_group.reassigned_after_history_check",
-        entity_type: "whatsapp_group",
-        entity_id: item.id,
-        old_values: { community_id: item.oldCommunityId, external_group_id: item.externalGroupId, sync_status: "removed" },
-        new_values: { community_id: communityId, external_group_id: item.externalGroupId, sync_status: "synced" },
-      }))),
-      headers: { Prefer: "return=minimal" },
-    });
+  for (const item of archivedReassignments) {
+    await writeAudit(
+      user,
+      "whatsapp_group.reassigned_after_history_check",
+      "whatsapp_group",
+      item.id,
+      { community_id: item.oldCommunityId, external_group_id: item.externalGroupId, sync_status: "removed" },
+      { community_id: communityId, external_group_id: item.externalGroupId, sync_status: "synced" },
+    );
   }
   return { communities_imported: 1, groups_imported: groupsImported, subgroups_imported: source.subgroups?.length || 0, contacts_imported: contactsImported, participants_skipped: skipped };
 }
@@ -1313,7 +1310,7 @@ export default async (request) => {
       const communityId = isUuid(body.community_id) ? body.community_id : null;
       const whatsappCommunityId = String(body.whatsapp_community_id || "");
       if (!communityId || !whatsappCommunityId.endsWith("@g.us")) return json(422,{message:"Escolha a comunidade da plataforma e a Comunidade do WhatsApp."});
-      const result = await syncWhatsApp(communityId,whatsappCommunityId);
+      const result = await syncWhatsApp(communityId,whatsappCommunityId,user);
       return json(200,result);
     }
     if (path === "/public/registrations" && method === "POST") {
