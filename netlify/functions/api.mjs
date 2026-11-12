@@ -738,7 +738,17 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
   const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
-  if (existingContainer[0]?.sync_status === "removed") throw new Error("Esta Comunidade WhatsApp foi removida do catálogo. Restaure o registo antes de voltar a sincronizar.");
+  if (existingContainer[0]?.sync_status === "removed") throw new Error("Esta Comunidade WhatsApp já foi removida do catálogo e mantém histórico associado a outra configuração. Para reutilizar os mesmos IDs, restaure primeiro a comunidade original e os respetivos registos; para uma configuração nova, utilize uma Comunidade WhatsApp nova.");
+  if (existingContainer[0] && existingContainer[0].community_id !== communityId) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
+  // Validate every subgroup before writing the community root. This prevents a
+  // partial sync if one of the WhatsApp groups was previously archived.
+  const existingSubgroups = new Map();
+  for (const group of source.subgroups || []) {
+    const rows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    if (rows[0]?.sync_status === "removed") throw new Error("O grupo WhatsApp " + (group.subject || group.id) + " já foi removido do catálogo e mantém histórico de membros/subscrições. Não será reimportado automaticamente para evitar misturar históricos. Utilize um grupo WhatsApp novo ou restaure a configuração original.");
+    if (rows[0] && rows[0].community_id !== communityId) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
+    existingSubgroups.set(group.id, rows[0] || null);
+  }
   const communityImage = await persistWhatsAppGroupImage(source.id, communityId + '/community');
   const communityImageUrl = communityImage || existingContainer[0]?.image_url || source.profile_picture_url || null;
   if (existingContainer[0] && existingContainer[0].community_id !== communityId) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
@@ -760,11 +770,9 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   });
   groupsImported++;
   for (const group of source.subgroups || []) {
-    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
-    if (existingRows[0]?.sync_status === "removed") continue;
+    const existingRow = existingSubgroups.get(group.id);
     const subgroupImage = await persistWhatsAppGroupImage(group.id, communityId + '/' + group.id);
-    const subgroupImageUrl = subgroupImage || existingRows[0]?.image_url || group.profile_picture_url || null;
-    if (existingRows[0] && existingRows[0].community_id !== communityId) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
+    const subgroupImageUrl = subgroupImage || existingRow?.image_url || group.profile_picture_url || null;
     let inviteLink = null;
     try { inviteLink = (await bridge("/groups/" + encodeURIComponent(group.id) + "/invite-link")).invite_link || null; } catch { /* optional; requires admin role */ }
     const stored = await sb("whatsapp_groups?on_conflict=whatsapp_connection_id,external_group_id", {
@@ -773,7 +781,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
         community_id: communityId, whatsapp_connection_id: connectionId, external_group_id: group.id,
         name: group.subject || "Grupo WhatsApp", description: group.description || null, group_type: "subgroup",
         invite_link: inviteLink, image_url: subgroupImageUrl, linked_parent_id: group.linked_parent_id || source.id,
-        is_active: existingRows[0]?.is_active ?? false, sync_status: "synced",
+        is_active: existingRow?.is_active ?? false, sync_status: "synced",
       }]),
       headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     });
