@@ -370,7 +370,7 @@ async function adminArchiveCommunity(communityId, user) {
   try {
     const result = await sb("rpc/archive_whatsapp_community", { method:"POST", body:JSON.stringify({p_community_id:communityId}) });
     await writeAudit(user,"community.archived","community",communityId,current,{...result,archived_at:iso(new Date())});
-    return { status:200, body:{message:"Comunidade arquivada e dessincronizada de forma segura. O histórico foi preservado; nenhum membro foi removido do WhatsApp."} };
+    return { status:200, body:{message:"Comunidade removida do catálogo e dessincronizada. Subscrições, planos, membros e histórico foram preservados; nenhum membro foi removido do WhatsApp."} };
   } catch (error) {
     const message=error instanceof Error?error.message:"Não foi possível arquivar a comunidade.";
     return { status:message.includes("não encontrada")?404:409, body:{message} };
