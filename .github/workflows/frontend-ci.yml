@@ -6,6 +6,7 @@ on:
       - feat/archive-communities-and-groups-2026-11-12
       - fix/safe-whatsapp-community-reuse-2026-11-12
       - fix/whatsapp-api-url-and-access-2026-11-12
+      - fix/registration-whatsapp-redirect-2026-11-12
       - fix/community-clean-restart-2026-11-12
   pull_request:
     branches:
