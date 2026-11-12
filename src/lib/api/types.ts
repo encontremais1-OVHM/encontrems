@@ -15,7 +15,7 @@ export type SubscriptionStatus =
 
 export type PaymentStatus = "pending" | "confirmed" | "rejected" | "cancelled";
 
-export type AccessStatus = "none" | "pending" | "active" | "retrying" | "removal_pending" | "removed" | "failed";
+export type AccessStatus = "none" | "pending" | "active" | "retrying" | "invite_sent" | "removal_pending" | "removed" | "failed";
 
 export type WhatsAppConnectionStatus = "not_configured" | "connected" | "disconnected" | "error";
 
