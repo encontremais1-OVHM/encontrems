@@ -1225,11 +1225,6 @@ export default async (request) => {
       const result = await adminRestoreWhatsAppGroup(groupRestore[1], user);
       return json(result.status, result.body);
     }
-    const groupRestore = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/restore$/i);
-    if (groupRestore && method === "POST") {
-      const result = await adminRestoreWhatsAppGroup(groupRestore[1], user);
-      return json(result.status, result.body);
-    }
     const groupAction = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})$/i);
     if (groupAction && method === "DELETE") {
       const result = await adminRemoveWhatsAppGroup(groupAction[1], user);
