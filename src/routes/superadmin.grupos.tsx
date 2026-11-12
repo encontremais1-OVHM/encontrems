@@ -52,12 +52,19 @@ function GruposPage() {
   // The database mapping is the source of truth; a reload must not require a new sync.
   useEffect(() => {
     if (syncCommunity || syncWhatsAppCommunityId || !query.data?.data?.length) return;
-    const container = query.data.data.find(group => group.group_type === "community" && group.external_group_id && group.community_id);
+    const activePlatformCommunityIds = new Set((communities.data?.data ?? []).filter(item => !item.archived_at).map(item => item.id));
+    const container = query.data.data.find(group =>
+      group.group_type === "community" &&
+      group.sync_status !== "removed" &&
+      group.external_group_id &&
+      group.community_id &&
+      activePlatformCommunityIds.has(group.community_id)
+    );
     if (container) {
       setSyncCommunity(container.community_id);
       setSyncWhatsAppCommunityId(container.external_group_id);
     }
-  }, [query.data, syncCommunity, syncWhatsAppCommunityId]);
+  }, [query.data, communities.data, syncCommunity, syncWhatsAppCommunityId]);
 
   const sync = useMutation({
     mutationFn: () => apiRequest<{ groups_imported: number; subgroups_imported: number; contacts_imported: number; participants_skipped: number }>("/admin/whatsapp/sync", {
