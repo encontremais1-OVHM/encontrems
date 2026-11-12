@@ -732,7 +732,8 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   const connectionId = await ensureConnection(communityId, "connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
-  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,image_url&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
+  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
+  if (existingContainer[0]?.sync_status === "removed") throw new Error("Esta Comunidade WhatsApp foi removida do catálogo. Restaure o registo antes de voltar a sincronizar.");
   const communityImage = await persistWhatsAppGroupImage(source.id, communityId + '/community');
   const communityImageUrl = communityImage || existingContainer[0]?.image_url || source.profile_picture_url || null;
   if (existingContainer[0] && existingContainer[0].community_id !== communityId) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
@@ -755,6 +756,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   groupsImported++;
   for (const group of source.subgroups || []) {
     const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    if (existingRows[0]?.sync_status === "removed") continue;
     const subgroupImage = await persistWhatsAppGroupImage(group.id, communityId + '/' + group.id);
     const subgroupImageUrl = subgroupImage || existingRows[0]?.image_url || group.profile_picture_url || null;
     if (existingRows[0] && existingRows[0].community_id !== communityId) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
