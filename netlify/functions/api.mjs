@@ -650,7 +650,11 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   const source = (sourceResult.communities || []).find((item) => item.id === whatsappCommunityId);
   if (!platformCommunity) throw new Error("Comunidade da plataforma não encontrada.");
   if (!source) throw new Error("A Comunidade WhatsApp selecionada já não está disponível na conta ligada.");
-  if (source.isAdmin !== true) throw new Error("A conta WhatsApp ligada não é administradora desta Comunidade. Promova a conta a administradora antes de sincronizar.");
+  if (source.admin_status === "unknown" || source.isAdmin === null || source.isAdmin === undefined) {
+    const detail = source.admin_check_error ? " Detalhe: " + String(source.admin_check_error).slice(0, 240) : "";
+    throw new Error("Não foi possível confirmar as permissões administrativas desta Comunidade WhatsApp. A consulta de metadados ou a identificação PN/LID não foi concluída; a sincronização foi bloqueada por segurança." + detail);
+  }
+  if (source.isAdmin !== true) throw new Error("A conta WhatsApp ligada foi identificada como participante sem permissões de administração desta Comunidade. Confirme a função da conta no WhatsApp antes de sincronizar.");
   if (platformCommunity.whatsapp_community_id && platformCommunity.whatsapp_community_id !== source.id) throw new Error("Esta comunidade da plataforma já está associada a outra Comunidade WhatsApp.");
   const connectionId = await ensureConnection(communityId, "connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
