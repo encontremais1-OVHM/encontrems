@@ -996,7 +996,26 @@ export default async (request) => {
           const community = await bridge("/community");
           return json(200,{...status,community_is_admin:community.isAdmin===true,community_is_owner:community.isOwner===true,community_account_role:community.accountRole|| (community.isOwner===true?"owner":community.isAdmin===true?"admin":"member"),community_name:community.subject||null});
         } catch (error) {
-          return json(200,{...status,community_is_admin:null,community_check_error:error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal."});
+          let communityDiagnostics = null;
+          try { communityDiagnostics = await bridge("/community/diagnostics"); } catch (diagnosticError) {
+            communityDiagnostics = { diagnostic_error: diagnosticError instanceof Error ? diagnosticError.message : "Não foi possível obter o diagnóstico da comunidade." };
+          }
+          const candidates = Array.isArray(communityDiagnostics?.communities)
+            ? communityDiagnostics.communities.map((item) => ({ id: item.id, subject: item.subject, participants: item.participantCount }))
+            : [];
+          const discoverySummary = communityDiagnostics
+            ? " Diagnóstico WhatsApp: COMMUNITY_JID=" + (communityDiagnostics.configuredJid || "indisponível") +
+              "; correspondência exata=" + (communityDiagnostics.exactMatch?.id || "não encontrada") +
+              "; comunidades encontradas=" + JSON.stringify(candidates) +
+              "; grupos participantes=" + (communityDiagnostics.groupCount ?? "indisponível") +
+              (communityDiagnostics.diagnostic_error ? "; erro do diagnóstico=" + communityDiagnostics.diagnostic_error : "")
+            : "";
+          return json(200,{
+            ...status,
+            community_is_admin:null,
+            community_check_error:(error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal.")+discoverySummary,
+            community_diagnostics:communityDiagnostics,
+          });
         }
       } catch (error) {
         return json(503,{
