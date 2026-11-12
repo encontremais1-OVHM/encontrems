@@ -13,6 +13,7 @@ const OWNER_EMAIL = "hgconnect1@gmail.com";
 // repeated WhatsApp IQ requests and trigger rate-overlimit.
 let whatsappCommunityCheckCache = null;
 let whatsappCommunityCheckInFlight = null;
+let whatsappStatusGeneration = 0;
 
 const json = (statusCode, payload) => Response.json(payload, {
   status: statusCode,
@@ -1071,7 +1072,9 @@ export default async (request) => {
       try {
         const status = await bridge("/status");
         if (!status.connected) {
+          whatsappStatusGeneration += 1;
           whatsappCommunityCheckCache = null;
+          whatsappCommunityCheckInFlight = null;
           return json(200,status);
         }
         if (whatsappCommunityCheckCache && whatsappCommunityCheckCache.expiresAt > Date.now()) {
@@ -1081,6 +1084,7 @@ export default async (request) => {
           const cachedValue = await whatsappCommunityCheckInFlight;
           return json(200,{...status,...cachedValue});
         }
+        const generation = whatsappStatusGeneration;
         const checkPromise = (async()=>{
           try {
             const community = await bridge("/community");
@@ -1128,10 +1132,10 @@ export default async (request) => {
         try {
           const value = await checkPromise;
           // Cache success for 30s and failed discovery for 60s to honour WhatsApp cooldowns.
-          whatsappCommunityCheckCache = { value, expiresAt:Date.now()+(value.community_check_error?60_000:30_000) };
+          if (generation === whatsappStatusGeneration) whatsappCommunityCheckCache = { value, expiresAt:Date.now()+(value.community_check_error?60_000:30_000) };
           return json(200,{...status,...value});
         } finally {
-          whatsappCommunityCheckInFlight = null;
+          if (whatsappCommunityCheckInFlight === checkPromise) whatsappCommunityCheckInFlight = null;
         }
       } catch (error) {
         return json(503,{
@@ -1224,7 +1228,7 @@ export default async (request) => {
       const result = await adminUpdateGroup(groupId, { group_type: body.group_type }, user);
       return json(result.status, result.body);
     }
-    if (path === "/admin/whatsapp/connect" && method === "POST") { whatsappCommunityCheckCache=null; return json(202,await bridge("/connect","POST",{})); }
+    if (path === "/admin/whatsapp/connect" && method === "POST") { whatsappStatusGeneration+=1; whatsappCommunityCheckCache=null; whatsappCommunityCheckInFlight=null; return json(202,await bridge("/connect","POST",{})); }
     if (path === "/admin/whatsapp/qr" && method === "GET") return json(200,await bridge("/qr"));
     if (path === "/admin/whatsapp/pairing-code" && method === "POST") {
       const body = await request.json().catch(() => ({}));
@@ -1232,7 +1236,7 @@ export default async (request) => {
       if (!/^\d{8,15}$/.test(phone)) return json(400,{message:"Introduza o número com indicativo do país."});
       return json(200,await bridge("/pairing-code","POST",{phone}));
     }
-    if (path === "/admin/whatsapp/disconnect" && method === "POST") { whatsappCommunityCheckCache=null; return json(200,await bridge("/disconnect","POST",{})); }
+    if (path === "/admin/whatsapp/disconnect" && method === "POST") { whatsappStatusGeneration+=1; whatsappCommunityCheckCache=null; whatsappCommunityCheckInFlight=null; return json(200,await bridge("/disconnect","POST",{})); }
     if (path === "/admin/whatsapp/communities" && method === "GET") return json(200,await bridge("/communities"));
     if (path === "/admin/whatsapp/sync" && method === "POST") {
       const body = await request.json().catch(() => ({}));
