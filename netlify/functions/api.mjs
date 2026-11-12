@@ -188,7 +188,7 @@ async function adminResource(resource) {
   }
   if (resource === "communities") {
     const [rows,plans,groups,subscriptions] = await Promise.all([
-      sb("communities?select=id,name,slug,description,influencer_name,status,created_at&order=name.asc"),
+      sb("communities?select=id,name,slug,description,influencer_name,status,archived_at,created_at&order=name.asc"),
       sb("plans?select=id,community_id,name,initial_price,renewal_price,duration_days,grace_days,is_active"),
       sb("whatsapp_groups?select=id,community_id,is_active,group_type"),
       sb("subscriptions?select=id,community_id,member_id"),
@@ -315,9 +315,10 @@ async function adminCreateCommunity(body, user) {
 
 async function adminUpdateCommunity(communityId, body, user) {
   if (!isUuid(communityId)) return { status: 422, body: { message: "Identificador de comunidade inválido." } };
-  const rows = await sb("communities?select=id,name,slug,description,influencer_name,status&id=eq." + communityId + "&limit=1");
+  const rows = await sb("communities?select=id,name,slug,description,influencer_name,status,archived_at&id=eq." + communityId + "&limit=1");
   const current = rows[0];
   if (!current) return { status: 404, body: { message: "Comunidade não encontrada." } };
+  if (current.archived_at) return { status: 409, body: { message: "Esta comunidade está arquivada. Restaure-a antes de editar ou publicar." } };
   const patch = {};
   if (body.name !== undefined) {
     const name = String(body.name).trim();
@@ -347,14 +348,82 @@ async function adminUpdateCommunity(communityId, body, user) {
   return { status: 200, body: { message: "Comunidade atualizada.", data: { ...current, ...patch } } };
 }
 
+async function adminArchiveCommunity(communityId, user) {
+  if (!isUuid(communityId)) return { status: 422, body: { message: "Identificador de comunidade inválido." } };
+  const rows = await sb("communities?select=id,name,status,archived_at,whatsapp_community_id&id=eq." + communityId + "&limit=1");
+  const current = rows[0];
+  if (!current) return { status: 404, body: { message: "Comunidade não encontrada." } };
+  if (current.archived_at) return { status: 200, body: { message: "Esta comunidade já estava arquivada." } };
+  const activeSubscriptions = await sb("subscriptions?select=id&community_id=eq." + communityId + "&status=in.(active,grace_period)&limit=1");
+  if (activeSubscriptions.length) return { status: 409, body: { message: "Não é possível arquivar esta comunidade enquanto existirem subscrições ativas ou em período de tolerância. Preserve primeiro o acesso dos membros." } };
+  const groups = await sb("whatsapp_groups?select=id&community_id=eq." + communityId);
+  const groupIds = groups.map(group => group.id);
+  if (groupIds.length) {
+    const inFilter = groupIds.join(",");
+    const processing = await sb("access_operations?select=id&whatsapp_group_id=in.(" + inFilter + ")&status=eq.processing&limit=1");
+    if (processing.length) return { status: 409, body: { message: "Existe uma operação WhatsApp em execução para esta comunidade. Aguarde a sua conclusão e tente novamente." } };
+    await sb("access_operations?whatsapp_group_id=in.(" + inFilter + ")&status=in.(queued,retry_pending)", { method:"PATCH", body:JSON.stringify({status:"cancelled",next_retry_at:null,updated_at:iso(new Date())}), headers:{Prefer:"return=minimal"} });
+    await sb("whatsapp_groups?community_id=eq." + communityId, { method:"PATCH", body:JSON.stringify({is_active:false,sync_status:"removed",invite_link:null,updated_at:iso(new Date())}), headers:{Prefer:"return=minimal"} });
+  }
+  const now=iso(new Date());
+  const patch={status:"inactive",archived_at:now,whatsapp_community_id:null,image_url:null,updated_at:now};
+  await sb("communities?id=eq."+communityId,{method:"PATCH",body:JSON.stringify(patch),headers:{Prefer:"return=minimal"}});
+  await writeAudit(user,"community.archived","community",communityId,current,{...patch,groups_archived:groupIds.length});
+  return {status:200,body:{message:"Comunidade arquivada e dessincronizada. O histórico foi preservado; nenhum membro foi removido do WhatsApp."}};
+}
+async function adminRestoreCommunity(communityId,user) {
+  if(!isUuid(communityId))return {status:422,body:{message:"Identificador de comunidade inválido."}};
+  const rows=await sb("communities?select=id,name,status,archived_at&id=eq."+communityId+"&limit=1");
+  const current=rows[0];
+  if(!current)return {status:404,body:{message:"Comunidade não encontrada."}};
+  if(!current.archived_at)return {status:200,body:{message:"A comunidade já está disponível. Associe e sincronize novamente os grupos WhatsApp."}};
+  const patch={archived_at:null,status:"inactive",updated_at:iso(new Date())};
+  await sb("communities?id=eq."+communityId,{method:"PATCH",body:JSON.stringify(patch),headers:{Prefer:"return=minimal"}});
+  await writeAudit(user,"community.restored","community",communityId,current,patch);
+  return {status:200,body:{message:"Comunidade restaurada como privada. Volte a associar e sincronizar a Comunidade WhatsApp; os grupos antigos continuam arquivados."}};
+}
+async function adminRemoveWhatsAppGroup(groupId,user) {
+  if(!isUuid(groupId))return {status:422,body:{message:"Identificador de grupo inválido."}};
+  const rows=await sb("whatsapp_groups?select=id,name,community_id,group_type,is_active,sync_status,external_group_id&id=eq."+groupId+"&limit=1");
+  const current=rows[0];
+  if(!current)return {status:404,body:{message:"Grupo não encontrado."}};
+  if(current.sync_status==="removed")return {status:200,body:{message:"Este grupo já estava removido do catálogo."}};
+  const community=await sb("communities?select=id,archived_at&id=eq."+current.community_id+"&limit=1");
+  if(!community[0]||community[0].archived_at)return {status:409,body:{message:"A comunidade associada está arquivada. Restaure a comunidade antes de alterar este grupo."}};
+  const activeSubscriptions=await sb("subscriptions?select=id&community_id=eq."+current.community_id+"&status=in.(active,grace_period)&limit=1");
+  if(activeSubscriptions.length)return {status:409,body:{message:"Não é possível remover este grupo enquanto a comunidade tiver subscrições ativas ou em período de tolerância."}};
+  const processing=await sb("access_operations?select=id&whatsapp_group_id=eq."+groupId+"&status=eq.processing&limit=1");
+  if(processing.length)return {status:409,body:{message:"Existe uma operação WhatsApp em execução para este grupo. Aguarde a sua conclusão e tente novamente."}};
+  await sb("access_operations?whatsapp_group_id=eq."+groupId+"&status=in.(queued,retry_pending)",{method:"PATCH",body:JSON.stringify({status:"cancelled",next_retry_at:null,updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
+  const patch={is_active:false,sync_status:"removed",invite_link:null,updated_at:iso(new Date())};
+  await sb("whatsapp_groups?id=eq."+groupId,{method:"PATCH",body:JSON.stringify(patch),headers:{Prefer:"return=minimal"}});
+  await writeAudit(user,"whatsapp_group.removed_from_catalog","whatsapp_group",groupId,current,patch);
+  return {status:200,body:{message:"Grupo removido do catálogo e dessincronizado. O grupo real, os membros e o histórico no WhatsApp foram preservados."}};
+}
+async function adminRestoreWhatsAppGroup(groupId,user) {
+  if(!isUuid(groupId))return {status:422,body:{message:"Identificador de grupo inválido."}};
+  const rows=await sb("whatsapp_groups?select=id,name,community_id,sync_status&id=eq."+groupId+"&limit=1");
+  const current=rows[0];
+  if(!current)return {status:404,body:{message:"Grupo não encontrado."}};
+  const community=await sb("communities?select=id,archived_at&id=eq."+current.community_id+"&limit=1");
+  if(!community[0]||community[0].archived_at)return {status:409,body:{message:"Restaure primeiro a comunidade associada."}};
+  if(current.sync_status!=="removed")return {status:200,body:{message:"O grupo já não está marcado como removido."}};
+  const patch={is_active:false,sync_status:"disabled",invite_link:null,updated_at:iso(new Date())};
+  await sb("whatsapp_groups?id=eq."+groupId,{method:"PATCH",body:JSON.stringify(patch),headers:{Prefer:"return=minimal"}});
+  await writeAudit(user,"whatsapp_group.restored_to_catalog","whatsapp_group",groupId,current,patch);
+  return {status:200,body:{message:"Registo restaurado como oculto. Sincronize novamente ou disponibilize-o após confirmar a associação WhatsApp."}};
+}
+
 async function adminUpdateGroup(groupId, body, user) {
   if (!isUuid(groupId)) return { status: 422, body: { message: "Identificador de grupo inválido." } };
-  const rows = await sb("whatsapp_groups?select=id,community_id,name,group_type,is_active,external_group_id,linked_parent_id&id=eq." + groupId + "&limit=1");
+  const rows = await sb("whatsapp_groups?select=id,community_id,name,group_type,is_active,sync_status,external_group_id,linked_parent_id&id=eq." + groupId + "&limit=1");
   const current = rows[0];
   if (!current) return { status: 404, body: { message: "Grupo não encontrado." } };
+  if (current.sync_status === "removed") return { status: 409, body: { message: "Este grupo foi removido do catálogo. Restaure-o antes de editar." } };
   const communityId = body.community_id === undefined ? current.community_id : body.community_id;
   if (!isUuid(communityId)) return { status: 422, body: { message: "Escolha uma comunidade válida." } };
-  const communities = await sb("communities?select=id&id=eq." + communityId + "&limit=1");
+  const communities = await sb("communities?select=id,archived_at&id=eq." + communityId + "&limit=1");
+  if (communities[0]?.archived_at) return { status: 409, body: { message: "Não é possível associar grupos a uma comunidade arquivada." } };
   if (!communities.length) return { status: 404, body: { message: "Comunidade não encontrada." } };
   const groupType = body.group_type === undefined ? current.group_type : body.group_type;
   const isActive = body.is_active === undefined ? current.is_active : body.is_active;
@@ -643,12 +712,13 @@ async function syncAllWhatsApp() {
 
 async function syncWhatsApp(communityId, whatsappCommunityId) {
   const [platformRows, sourceResult] = await Promise.all([
-    sb("communities?select=id,name,whatsapp_community_id&id=eq." + communityId + "&limit=1"),
+    sb("communities?select=id,name,whatsapp_community_id,archived_at&id=eq." + communityId + "&limit=1"),
     bridge("/communities"),
   ]);
   const platformCommunity = platformRows[0];
   const source = (sourceResult.communities || []).find((item) => item.id === whatsappCommunityId);
   if (!platformCommunity) throw new Error("Comunidade da plataforma não encontrada.");
+  if (platformCommunity.archived_at) throw new Error("Esta comunidade da plataforma está arquivada. Restaure-a antes de sincronizar.");
   if (!source) throw new Error("A Comunidade WhatsApp selecionada já não está disponível na conta ligada.");
   if (source.admin_status !== "admin" && source.admin_status !== "not_admin") {
     const detail = source.admin_check_error ? " Detalhe: " + String(source.admin_check_error).slice(0, 240) : "";
@@ -863,7 +933,16 @@ export default async (request) => {
       const result = await adminCreateCommunity(body, user);
       return json(result.status, result.body);
     }
-    const communityAction = path.match(/^\/admin\/communities\/([0-9a-f-]{36})$/i);
+    const communityRestore = path.match(/^\\/admin\\/communities\\/([0-9a-f-]{36})\\/restore$/i);
+    if (communityRestore && method === "POST") {
+      const result = await adminRestoreCommunity(communityRestore[1], user);
+      return json(result.status, result.body);
+    }
+    const communityAction = path.match(/^\\/admin\\/communities\\/([0-9a-f-]{36})$/i);
+    if (communityAction && method === "DELETE") {
+      const result = await adminArchiveCommunity(communityAction[1], user);
+      return json(result.status, result.body);
+    }
     if (communityAction && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateCommunity(communityAction[1], body, user);
@@ -1090,7 +1169,17 @@ export default async (request) => {
         community_participants_checked_at:communityParticipantsCheckedAt,
       });
     }
-    const groupSettings = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/settings$/i);
+    const groupRestore = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})\\/restore$/i);
+    if (groupRestore && method === "POST") {
+      const result = await adminRestoreWhatsAppGroup(groupRestore[1], user);
+      return json(result.status, result.body);
+    }
+    const groupAction = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})$/i);
+    if (groupAction && method === "DELETE") {
+      const result = await adminRemoveWhatsAppGroup(groupAction[1], user);
+      return json(result.status, result.body);
+    }
+    const groupSettings = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})\\/settings$/i);
     if (groupSettings && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateGroup(groupSettings[1], body, user);
