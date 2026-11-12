@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, UsersRound } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
 
 import { EmptyState } from "@/components/app/EmptyState";
@@ -154,7 +154,6 @@ function InscricaoPage() {
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<RegistrationReceipt | null>(null);
   const [preselected, setPreselected] = useState(false);
-  const whatsappWindowRef = useRef<Window | null>(null);
 
   const community: PublicCommunity | undefined = communities.find((c) => c.id === communityId);
   const selectedSubgroups = community?.subgroups.filter((s) => subgroupIds.includes(s.id)) ?? [];
@@ -203,11 +202,6 @@ function InscricaoPage() {
     if (!community || !firstSubgroup || !normalizedPhone) return;
     setSubmitError(null);
     setSubmitting(true);
-    // Open a blank tab during the user's click so the browser permits the
-    // WhatsApp deep link to open after the server confirms actual membership.
-    if (!whatsappWindowRef.current || whatsappWindowRef.current.closed) {
-      whatsappWindowRef.current = window.open("about:blank", "_blank");
-    }
     try {
       const res = await createRegistration({
         community_id: community.id,
@@ -223,10 +217,6 @@ function InscricaoPage() {
       setReceipt(res);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      if (whatsappWindowRef.current && !whatsappWindowRef.current.closed) {
-        whatsappWindowRef.current.close();
-      }
-      whatsappWindowRef.current = null;
       if (err instanceof ApiError && err.status === 422 && err.body && typeof err.body === "object") {
         const apiErrors = (err.body as { errors?: Record<string, string[]> }).errors ?? {};
         const mapped: FieldErrors = {};
@@ -254,7 +244,7 @@ function InscricaoPage() {
       <PublicHeader />
       <main className="mx-auto max-w-3xl px-5 py-10 sm:py-14">
         {receipt && community && selectedSubgroups.length > 0 && normalizedPhone ? (
-          <Receipt receipt={receipt} communityName={community.name} subgroupNames={selectedSubgroups.map((s)=>s.name)} whatsapp={normalizedPhone} whatsappWindowRef={whatsappWindowRef} />
+          <Receipt receipt={receipt} communityName={community.name} subgroupNames={selectedSubgroups.map((s)=>s.name)} whatsapp={normalizedPhone} />
         ) : (
           <>
             <h1 className="text-3xl font-black text-foreground sm:text-4xl">Inscrever-me</h1>
@@ -533,13 +523,11 @@ function Receipt({
   communityName,
   subgroupNames,
   whatsapp,
-  whatsappWindowRef,
 }: {
   receipt: RegistrationReceipt;
   communityName: string;
   subgroupNames: string[];
   whatsapp: string;
-  whatsappWindowRef: { current: Window | null };
 }) {
   const liveStatus = useQuery(registrationStatusQuery(receipt.reference, whatsapp));
   const liveAccess = liveStatus.data?.access;
@@ -554,24 +542,6 @@ function Receipt({
     return { ...group, status: liveGroup?.status === "joined" ? "joined" as const : group.status };
   });
   const [whatsappOpened, setWhatsappOpened] = useState(false);
-  const [showManualOpen, setShowManualOpen] = useState(false);
-
-  useEffect(() => {
-    if (!communityJoined || !communityInviteUrl || whatsappOpened) return;
-    const popup = whatsappWindowRef.current;
-    if (popup && !popup.closed) {
-      try {
-        popup.opener = null;
-        popup.location.replace(communityInviteUrl);
-        whatsappWindowRef.current = null;
-        setWhatsappOpened(true);
-      } catch {
-        setShowManualOpen(true);
-      }
-    } else {
-      setShowManualOpen(true);
-    }
-  }, [communityJoined, communityInviteUrl, whatsappOpened, whatsappWindowRef]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -596,7 +566,7 @@ function Receipt({
         <section className="space-y-3 rounded-2xl border bg-card p-5">
           <div>
             <h2 className="font-bold text-foreground">Acesso à Comunidade Encontre +</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{communityFailed ? "O WhatsApp não reconheceu o número indicado nesta inscrição. Corrija o número para podermos concluir a entrada." : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisa de fazer outra inscrição.") : communityJoined ? "A sua entrada foi confirmada pelo WhatsApp." : "A conta administradora está a adicionar automaticamente o seu número à Comunidade e aos subgrupos seleccionados. O WhatsApp será aberto assim que a entrada for confirmada."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{communityFailed ? "O WhatsApp não reconheceu o número indicado nesta inscrição. Corrija o número para podermos concluir a entrada." : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisa de fazer outra inscrição.") : communityJoined ? "A sua entrada foi confirmada pelo WhatsApp." : "A conta administradora está a processar a sua entrada na Comunidade e nos subgrupos seleccionados. Quando a entrada for confirmada, poderá abrir o WhatsApp através do botão abaixo."}</p>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-3 text-sm">
             <span className="font-medium text-foreground">{communityName} · Comunidade principal</span>
@@ -623,16 +593,19 @@ function Receipt({
           {communityError || "O WhatsApp não reconheceu o número indicado. Confirme o número completo com o indicativo +244 e tente novamente."}
         </div>
       )}
-      {communityJoined && communityInviteUrl && showManualOpen && (
-        <Button className="w-full" onClick={() => window.open(communityInviteUrl, "_blank", "noopener,noreferrer")}>
+      {communityJoined && communityInviteUrl && (
+        <Button className="w-full" onClick={() => {
+          const opened = window.open(communityInviteUrl, "_blank", "noopener,noreferrer");
+          setWhatsappOpened(Boolean(opened));
+        }}>
           Abrir Comunidade no WhatsApp <ArrowRight />
         </Button>
       )}
       {communityJoined && whatsappOpened && (
-        <p className="text-sm font-semibold text-success">O WhatsApp foi aberto na Comunidade Encontre +.</p>
+        <p className="text-sm font-semibold text-success">O link da Comunidade foi aberto numa nova aba.</p>
       )}
       {communityJoined && !communityInviteUrl && (
-        <p className="text-sm text-muted-foreground">Entrada confirmada. A preparar a abertura do WhatsApp…</p>
+        <p className="text-sm text-muted-foreground">Entrada confirmada. O acesso à Comunidade já está activo; o link de abertura ainda não está disponível.</p>
       )}
       <PaymentPanel payment={receipt.payment} registrationReference={receipt.reference} whatsapp={whatsapp} />
 
