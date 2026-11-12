@@ -9,6 +9,13 @@ function normalizeApiUrl(value) {
     const parsed = new URL(candidate);
     if (!["https:", "http:"].includes(parsed.protocol)) return "";
     if (parsed.username || parsed.password || parsed.search || parsed.hash) return "";
+    // Netlify still has the legacy Railway hostname in some deploy contexts.
+    // Canonicalize that retired hostname to the currently deployed API so the
+    // secure server-side bridge does not keep calling an obsolete service.
+    if (parsed.hostname === "encontre-bailyler-ovhm-production.up.railway.app") {
+      parsed.hostname = "encontre-bailyler-23-production.up.railway.app";
+      parsed.protocol = "https:";
+    }
     return parsed.origin;
   } catch {
     return "";
