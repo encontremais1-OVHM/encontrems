@@ -123,7 +123,7 @@ function GruposPage() {
           <label className="text-sm font-medium text-foreground">Comunidade da plataforma</label>
           <Select value={syncCommunity} onValueChange={setSyncCommunity}>
             <SelectTrigger><SelectValue placeholder="Escolha a comunidade" /></SelectTrigger>
-            <SelectContent>{(communities.data?.data ?? []).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{(communities.data?.data ?? []).filter(c => !c.archived_at).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="space-y-1.5">
@@ -164,7 +164,7 @@ function GruposPage() {
         </button>
         {expanded === group.id && <div className="space-y-4 border-t p-4">
           {group.sync_status==="removed"?<div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"><p className="text-sm text-muted-foreground">{communities.data?.data.find(item=>item.id===group.community_id)?.archived_at?"A comunidade associada está arquivada. Restaure primeiro a comunidade na aba Comunidades.":"Removido apenas do catálogo da plataforma. Os membros, subscrições e o grupo real no WhatsApp foram preservados."}</p><Button size="sm" variant="outline" disabled={restoreGroup.isPending||Boolean(communities.data?.data.find(item=>item.id===group.community_id)?.archived_at)} onClick={()=>restoreGroup.mutate(group.id)}><RotateCcw className="size-4"/>Restaurar registo</Button></div>:<><div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5"><label className="text-xs font-semibold text-muted-foreground">Comunidade da plataforma</label><Select value={group.community_id} onValueChange={community_id => saveGroup.mutate({ id: group.id, community_id, group_type: group.group_type, is_active: group.is_active })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(communities.data?.data ?? []).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5"><label className="text-xs font-semibold text-muted-foreground">Comunidade da plataforma</label><Select value={group.community_id} onValueChange={community_id => saveGroup.mutate({ id: group.id, community_id, group_type: group.group_type, is_active: group.is_active })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(communities.data?.data ?? []).filter(c => !c.archived_at).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-1.5"><label className="text-xs font-semibold text-muted-foreground">Tipo de elemento</label><div className="flex h-10 items-center"><Badge variant={group.group_type === "community" ? "success" : "neutral"}>{group.group_type === "community" ? "Comunidade WhatsApp" : "Grupo interno"}</Badge></div></div>
             <div className="flex items-end"><Button className="w-full" variant={group.is_active ? "outline" : "default"} disabled={saveGroup.isPending} onClick={() => saveGroup.mutate({ id: group.id, community_id: group.community_id, group_type: group.group_type, is_active: !group.is_active })}>{group.is_active ? "Ocultar nas inscrições" : "Disponibilizar nas inscrições"}</Button></div>
           </div>
