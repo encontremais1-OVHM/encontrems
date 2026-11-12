@@ -20,6 +20,7 @@ const ACCESS: Record<
   none: { label: "Sem acesso", variant: "neutral" },
   pending: { label: "A aguardar", variant: "info" },
   active: { label: "Com acesso", variant: "success" },
+  retrying: { label: "A tentar novamente", variant: "warning" },
   removal_pending: { label: "Remoção pendente", variant: "warning" },
   removed: { label: "Removido", variant: "neutral" },
   failed: { label: "Falhou", variant: "danger" },
