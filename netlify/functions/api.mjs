@@ -292,7 +292,7 @@ async function writeAudit(user, action, entityType, entityId, oldValues, newValu
 
 async function adminCreateCommunity(body, user) {
   const name = String(body.name || "").trim();
-  const slug = makeSlug(body.slug || name);
+  const baseSlug = makeSlug(body.slug || name);
   const description = String(body.description || "").trim().slice(0, 1000) || null;
   const influencerName = String(body.influencer_name || "").trim().slice(0, 120) || null;
   // The current registration/payment flow supports the existing Encontre + tariff only.
@@ -300,11 +300,34 @@ async function adminCreateCommunity(body, user) {
   const renewalPrice = 1000;
   const durationDays = 30;
   const graceDays = 5;
-  if (name.length < 2 || !slug) {
+  if (name.length < 2 || !baseSlug) {
     return { status: 422, body: { message: "Preencha um nome, slug e plano com valores válidos." } };
   }
-  const existing = await sb("communities?select=id&slug=eq." + encodeURIComponent(slug) + "&limit=1");
-  if (existing.length) return { status: 409, body: { message: "Já existe uma comunidade com este endereço." } };
+
+  // Slugs remain unique for audit/history. If the previous community with this
+  // slug is archived, generate the next available suffix instead of forcing the
+  // administrator to restore or delete historical data.
+  let slug = baseSlug;
+  const existing = await sb("communities?select=id,archived_at&slug=eq." + encodeURIComponent(baseSlug) + "&limit=1");
+  if (existing.length && !existing[0].archived_at) {
+    return { status: 409, body: { message: "Já existe uma comunidade activa com este endereço." } };
+  }
+  if (existing.length) {
+    let available = false;
+    for (let suffix = 2; suffix <= 100; suffix++) {
+      const tail = "-" + suffix;
+      const candidate = baseSlug.slice(0, 70 - tail.length) + tail;
+      const matches = await sb("communities?select=id&slug=eq." + encodeURIComponent(candidate) + "&limit=1");
+      if (!matches.length) {
+        slug = candidate;
+        available = true;
+        break;
+      }
+    }
+    if (!available) {
+      return { status: 409, body: { message: "Já existem muitas configurações arquivadas com este nome. Defina um nome diferente para a nova comunidade." } };
+    }
+  }
   const created = await sb("communities", {
     method: "POST",
     body: JSON.stringify([{ name, slug, description, influencer_name: influencerName, status: "inactive" }]),
@@ -319,7 +342,8 @@ async function adminCreateCommunity(body, user) {
       headers: { Prefer: "return=representation" },
     });
     await writeAudit(user, "community.created", "community", community.id, null, { name, slug, status: "inactive", plan_id: plans?.[0]?.id || null });
-    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe a Comunidade do WhatsApp e os subgrupos antes de a publicar." } };
+    const slugNotice = slug !== baseSlug ? " O endereço anterior estava reservado pelo histórico arquivado; foi criado o novo endereço /" + slug + "." : "";
+    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe a Comunidade do WhatsApp e os subgrupos antes de a publicar." + slugNotice } };
   } catch (error) {
     await sb("communities?id=eq." + community.id, { method: "PATCH", body: JSON.stringify({ status: "inactive" }), headers: { Prefer: "return=minimal" } });
     throw error;
