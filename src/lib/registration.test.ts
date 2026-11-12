@@ -34,29 +34,50 @@ function status(overrides: Partial<RegistrationStatusResponse> = {}): Registrati
 }
 
 describe("WhatsApp invite links", () => {
-  it("are shown once payment, subscription and access are all confirmed", () => {
-    expect(inviteLinks(status())).toEqual({
+  it("hides links after WhatsApp confirms membership", () => {
+    expect(inviteLinks(status())).toEqual({ community: null, subgroup: null, subgroups: [] });
+  });
+
+  it("shows invitations while both WhatsApp memberships are pending", () => {
+    const links = inviteLinks(status({ access: {
+      community: "pending",
+      subgroup: "pending",
+      community_invite_url: "https://chat.whatsapp.com/main",
+      subgroup_invite_url: "https://chat.whatsapp.com/sub",
+    } }));
+    expect(links).toEqual({
       community: "https://chat.whatsapp.com/main",
       subgroup: "https://chat.whatsapp.com/sub",
+      subgroups: [{ id: "subgroup", name: "Subgrupo", url: "https://chat.whatsapp.com/sub" }],
     });
   });
 
-  it("are hidden while the payment is not confirmed, even if the API sent them", () => {
+  it("hides links while the payment is not confirmed, even if the API sent them", () => {
     const s = status();
     s.payment!.status = "pending";
-    expect(inviteLinks(s)).toEqual({ community: null, subgroup: null });
+    expect(inviteLinks(s)).toEqual({ community: null, subgroup: null, subgroups: [] });
   });
 
-  it("are hidden when the subscription has expired", () => {
+  it("hides links when the subscription has expired", () => {
     expect(inviteLinks(status({ subscription: { status: "expired", due_at: null } }))).toEqual({
       community: null,
       subgroup: null,
+      subgroups: [],
     });
   });
 
-  it("stay available during the 5-day grace period", () => {
-    const links = inviteLinks(status({ subscription: { status: "grace_period", due_at: null } }));
+  it("keeps pending invitations available during the 5-day grace period", () => {
+    const links = inviteLinks(status({
+      subscription: { status: "grace_period", due_at: null },
+      access: {
+        community: "pending",
+        subgroup: "pending",
+        community_invite_url: "https://chat.whatsapp.com/main",
+        subgroup_invite_url: "https://chat.whatsapp.com/sub",
+      },
+    }));
     expect(links.community).toBe("https://chat.whatsapp.com/main");
+    expect(links.subgroup).toBe("https://chat.whatsapp.com/sub");
   });
 });
 
