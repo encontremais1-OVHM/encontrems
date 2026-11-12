@@ -994,7 +994,7 @@ export default async (request) => {
         if (!status.connected) return json(200,status);
         try {
           const community = await bridge("/community");
-          return json(200,{...status,community_is_admin:community.isAdmin===true,community_name:community.subject||null});
+          return json(200,{...status,community_is_admin:community.isAdmin===true,community_is_owner:community.isOwner===true,community_account_role:community.accountRole|| (community.isOwner===true?"owner":community.isAdmin===true?"admin":"member"),community_name:community.subject||null});
         } catch (error) {
           return json(200,{...status,community_is_admin:null,community_check_error:error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal."});
         }
