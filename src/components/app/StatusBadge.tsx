@@ -21,6 +21,7 @@ const ACCESS: Record<
   pending: { label: "A aguardar", variant: "info" },
   active: { label: "Com acesso", variant: "success" },
   retrying: { label: "A tentar novamente", variant: "warning" },
+  invite_sent: { label: "Convite enviado", variant: "info" },
   removal_pending: { label: "Remoção pendente", variant: "warning" },
   removed: { label: "Removido", variant: "neutral" },
   failed: { label: "Falhou", variant: "danger" },

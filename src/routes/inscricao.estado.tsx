@@ -247,6 +247,7 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communi
   if (!authorized) return null;
   const communityFailed = communityStatus === "failed";
   const communityRetrying = communityStatus === "retrying";
+  const communityInviteSent = communityStatus === "invite_sent";
   const accessComplete = communityStatus === "active" && allSubgroupsJoined;
   return (
     <section className="rounded-2xl border border-success/30 bg-success-soft p-5 sm:p-6">
@@ -254,10 +255,10 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communi
         <MessageCircle className="size-5 text-success" /> Acesso à Comunidade e aos subgrupos
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisas de fazer outra inscrição.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : communityStatus === "active" ? "A tua entrada na Comunidade principal foi confirmada. Os subgrupos seleccionados estão agora a ser processados." : "A Encontre + está a solicitar primeiro a tua entrada na Comunidade principal. Os subgrupos seleccionados só serão processados depois de o WhatsApp confirmar essa entrada."}
+        {communityInviteSent ? (communityError || "Enviámos-te um convite por mensagem no WhatsApp. Abre a conversa com a Encontre + e toca em \"Entrar\".") : communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisas de fazer outra inscrição.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : communityStatus === "active" ? "A tua entrada na Comunidade principal foi confirmada. Os subgrupos seleccionados estão agora a ser processados." : "A Encontre + está a solicitar primeiro a tua entrada na Comunidade principal. Os subgrupos seleccionados só serão processados depois de o WhatsApp confirmar essa entrada."}
       </p>
       <p className="mt-3 text-sm text-foreground">
-        Estado da Comunidade: <span className="font-semibold">{communityFailed ? "Número não reconhecido no WhatsApp" : communityRetrying ? "Nova tentativa automática agendada" : communityStatus === "active" ? "Entrada confirmada" : "Adição automática em curso"}</span>
+        Estado da Comunidade: <span className="font-semibold">{communityInviteSent ? "Convite enviado no WhatsApp" : communityFailed ? "Entrada não concluída" : communityRetrying ? "Nova tentativa automática agendada" : communityStatus === "active" ? "Entrada confirmada" : "Adição automática em curso"}</span>
       </p>
       {communityStatus === "active" && communityInviteUrl && (
         <Button className="mt-3 w-full" onClick={() => window.open(communityInviteUrl, "_blank", "noopener,noreferrer")}>
