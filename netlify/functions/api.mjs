@@ -160,8 +160,14 @@ async function publicCommunities() {
 }
 
 async function publicPlan() {
-  const rows = await sb("plans?select=initial_price,renewal_price,duration_days,grace_days&is_active=eq.true&order=created_at.asc&limit=1");
-  const p = rows?.[0];
+  const [plans, communities] = await Promise.all([
+    sb("plans?select=community_id,initial_price,renewal_price,duration_days,grace_days&is_active=eq.true&order=created_at.asc"),
+    publicCommunities(),
+  ]);
+  // A plan is publicly selectable only when its community is actually visible
+  // in the registration catalog (active root + at least one active subgroup).
+  const visibleCommunityIds = new Set((communities.data || []).map((item) => item.id));
+  const p = plans.find((plan) => visibleCommunityIds.has(plan.community_id));
   if (!p) return { initial_price_kz: 0, renewal_price_kz: 1000, duration_days: 30, warning_day: 27, grace_days: 5 };
   return { initial_price_kz: Number(p.initial_price), renewal_price_kz: Number(p.renewal_price), duration_days: p.duration_days, warning_day: 27, grace_days: p.grace_days };
 }
