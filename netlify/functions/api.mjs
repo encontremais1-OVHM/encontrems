@@ -650,7 +650,14 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   const source = (sourceResult.communities || []).find((item) => item.id === whatsappCommunityId);
   if (!platformCommunity) throw new Error("Comunidade da plataforma não encontrada.");
   if (!source) throw new Error("A Comunidade WhatsApp selecionada já não está disponível na conta ligada.");
-  if (source.isAdmin !== true) throw new Error("A conta WhatsApp ligada não é administradora desta Comunidade. Promova a conta a administradora antes de sincronizar.");
+  if (source.admin_status !== "admin" && source.admin_status !== "not_admin") {
+    const detail = source.admin_check_error ? " Detalhe: " + String(source.admin_check_error).slice(0, 240) : "";
+    throw new Error("Não foi possível confirmar as permissões administrativas desta Comunidade WhatsApp. A consulta de metadados ou a identificação PN/LID não foi concluída; a sincronização foi bloqueada por segurança." + detail);
+  }
+  if (source.admin_status === "admin" && source.isAdmin !== true) {
+    throw new Error("O backend devolveu estados contraditórios para as permissões da Comunidade WhatsApp. A sincronização foi bloqueada por segurança.");
+  }
+  if (source.admin_status === "not_admin") throw new Error("A conta WhatsApp ligada foi identificada como participante sem permissões de administração desta Comunidade. Confirme a função da conta no WhatsApp antes de sincronizar.");
   if (platformCommunity.whatsapp_community_id && platformCommunity.whatsapp_community_id !== source.id) throw new Error("Esta comunidade da plataforma já está associada a outra Comunidade WhatsApp.");
   const connectionId = await ensureConnection(communityId, "connected");
   let groupsImported = 0, contactsImported = 0, skipped = 0;
@@ -987,7 +994,7 @@ export default async (request) => {
         if (!status.connected) return json(200,status);
         try {
           const community = await bridge("/community");
-          return json(200,{...status,community_is_admin:community.isAdmin===true,community_name:community.subject||null});
+          return json(200,{...status,community_is_admin:community.isAdmin===true,community_is_owner:community.isOwner===true,community_account_role:community.accountRole|| (community.isOwner===true?"owner":community.isAdmin===true?"admin":"member"),community_name:community.subject||null});
         } catch (error) {
           return json(200,{...status,community_is_admin:null,community_check_error:error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal."});
         }
