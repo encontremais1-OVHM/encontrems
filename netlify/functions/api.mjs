@@ -342,7 +342,8 @@ async function adminCreateCommunity(body, user) {
       headers: { Prefer: "return=representation" },
     });
     await writeAudit(user, "community.created", "community", community.id, null, { name, slug, status: "inactive", plan_id: plans?.[0]?.id || null });
-    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe a Comunidade do WhatsApp e os subgrupos antes de a publicar." } };
+    const slugNotice = slug !== baseSlug ? " O endereço anterior estava reservado pelo histórico arquivado; foi criado o novo endereço /" + slug + "." : "";
+    return { status: 201, body: { data: { ...community, plan: plans?.[0] || null }, message: "Comunidade criada. Associe a Comunidade do WhatsApp e os subgrupos antes de a publicar." + slugNotice } };
   } catch (error) {
     await sb("communities?id=eq." + community.id, { method: "PATCH", body: JSON.stringify({ status: "inactive" }), headers: { Prefer: "return=minimal" } });
     throw error;
