@@ -684,11 +684,15 @@ async function confirmRenewalPayment(paymentId) {
 
 async function ensureConnection(communityId, status) {
   // One connected WhatsApp account is shared across the platform's communities.
+  // Keep its platform anchor on the community being synchronized, not on an archived predecessor.
   const rows = await sb("whatsapp_connections?select=id,community_id&name=eq.Encontre%20%2B%20Principal&order=created_at.asc&limit=1");
   const now = iso(new Date());
   if (rows[0]) {
-    const patch = { connection_status: status, updated_at: now };
-    if (status === "connected") patch.last_connected_at = now;
+    const patch = { community_id: communityId, connection_status: status, updated_at: now };
+    if (status === "connected") {
+      patch.last_connected_at = now;
+      patch.last_error = null;
+    }
     if (status === "disconnected") patch.last_disconnected_at = now;
     await sb("whatsapp_connections?id=eq." + rows[0].id, { method:"PATCH", body: JSON.stringify(patch), headers: { Prefer:"return=minimal" } });
     return rows[0].id;
