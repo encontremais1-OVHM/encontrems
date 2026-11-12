@@ -28,6 +28,7 @@ function normalizePath(path) {
 
   if (pathname === "/status") return { path: "/session", method: "GET" };
   if (pathname === "/community") return { path: "/community", method: "GET" };
+  if (pathname === "/community/diagnostics") return { path: "/community/diagnostics", method: "GET" };
   if (pathname === "/connect") return { path: "/session/connect", method: "POST" };
   if (pathname === "/qr") return { path: "/session/qr", method: "GET" };
   if (pathname === "/pairing-code") return { path: "/session/pairing-code", method: "POST" };
@@ -64,6 +65,7 @@ function normalizeResponse(path, payload) {
   if (path === "/qr") return { qr_data_url: data.qrDataUrl, expires_in_seconds: data.expiresInSeconds || 60 };
   if (path === "/pairing-code") return { pairing_code: data.pairingCode };
   if (path === "/communities") return { communities: data.communities || [] };
+  if (path === "/community/diagnostics") return data;
   if (/\/participants(?:\/(?:add|remove))?$/.test(path)) return { participants: data.participants || [], ...data };
   if (/\/invite-link$/.test(path)) return { invite_link: data.inviteLink || null };
   if (/\/profile-picture$/.test(path)) return { profile_picture_url: data.profilePictureUrl || null };
