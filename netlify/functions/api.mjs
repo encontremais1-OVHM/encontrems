@@ -720,12 +720,10 @@ async function syncAllWhatsApp() {
 }
 
 
-const archivedCommunityReuseChecks = new Map();
-
-async function canSafelyReuseArchivedWhatsAppGroup(groupRow) {
+async function canSafelyReuseArchivedWhatsAppGroup(groupRow, checkCache) {
   if (!groupRow || groupRow.sync_status !== "removed" || !groupRow.community_id) return false;
   const communityId = groupRow.community_id;
-  let check = archivedCommunityReuseChecks.get(communityId);
+  let check = checkCache.get(communityId);
   if (!check) {
     check = (async () => {
       const [communities, subscriptions, communityGroups] = await Promise.all([
@@ -743,12 +741,14 @@ async function canSafelyReuseArchivedWhatsAppGroup(groupRow) {
       ]);
       return memberships.length === 0 && operations.length === 0;
     })();
-    archivedCommunityReuseChecks.set(communityId, check);
+    checkCache.set(communityId, check);
   }
   return check;
 }
 
 async function syncWhatsApp(communityId, whatsappCommunityId) {
+  const archivedCommunityReuseChecks = new Map();
+  const archivedReassignments = [];
   const [platformRows, sourceResult] = await Promise.all([
     sb("communities?select=id,name,whatsapp_community_id,archived_at&id=eq." + communityId + "&limit=1"),
     bridge("/communities"),
@@ -767,21 +767,28 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   }
   if (source.admin_status === "not_admin") throw new Error("A conta WhatsApp ligada foi identificada como participante sem permissões de administração desta Comunidade. Confirme a função da conta no WhatsApp antes de sincronizar.");
   if (platformCommunity.whatsapp_community_id && platformCommunity.whatsapp_community_id !== source.id) throw new Error("Esta comunidade da plataforma já está associada a outra Comunidade WhatsApp.");
-  const connectionId = await ensureConnection(communityId, "connected");
+  const connectionRows = await sb("whatsapp_connections?select=id&name=eq.Encontre%20%2B%20Principal&order=created_at.asc&limit=1");
+  let connectionId = connectionRows[0]?.id || null;
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
-  const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
-  if (existingContainer[0]?.sync_status === "removed" && !(await canSafelyReuseArchivedWhatsAppGroup(existingContainer[0]))) throw new Error("Esta Comunidade WhatsApp pertence a uma configuração antiga com histórico associado. O mesmo ID só pode ser reutilizado quando a configuração arquivada não tiver subscrições, vínculos de membros nem operações de acesso. Restaure a comunidade original ou utilize uma Comunidade WhatsApp nova.");
+  const existingContainer = connectionId ? await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1") : [];
+  if (existingContainer[0]?.sync_status === "removed" && !(await canSafelyReuseArchivedWhatsAppGroup(existingContainer[0], archivedCommunityReuseChecks))) throw new Error("Esta Comunidade WhatsApp pertence a uma configuração antiga com histórico associado. O mesmo ID só pode ser reutilizado quando a configuração arquivada não tiver subscrições, vínculos de membros nem operações de acesso. Restaure a comunidade original ou utilize uma Comunidade WhatsApp nova.");
   if (existingContainer[0] && existingContainer[0].community_id !== communityId && !(existingContainer[0].sync_status === "removed" && await canSafelyReuseArchivedWhatsAppGroup(existingContainer[0]))) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
   // Validate every subgroup before writing the community root. This prevents a
   // partial sync if one of the WhatsApp groups was previously archived.
   const existingSubgroups = new Map();
   for (const group of source.subgroups || []) {
-    const rows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
-    if (rows[0]?.sync_status === "removed" && !(await canSafelyReuseArchivedWhatsAppGroup(rows[0]))) throw new Error("O grupo WhatsApp " + (group.subject || group.id) + " pertence a uma configuração antiga com histórico associado. Só pode ser reutilizado se a comunidade arquivada não tiver subscrições, vínculos de membros nem operações de acesso. Restaure a configuração original ou utilize um grupo WhatsApp novo.");
+    const rows = connectionId ? await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1") : [];
+    if (rows[0]?.sync_status === "removed" && !(await canSafelyReuseArchivedWhatsAppGroup(rows[0], archivedCommunityReuseChecks))) throw new Error("O grupo WhatsApp " + (group.subject || group.id) + " pertence a uma configuração antiga com histórico associado. Só pode ser reutilizado se a comunidade arquivada não tiver subscrições, vínculos de membros nem operações de acesso. Restaure a configuração original ou utilize um grupo WhatsApp novo.");
     if (rows[0] && rows[0].community_id !== communityId && !(rows[0].sync_status === "removed" && await canSafelyReuseArchivedWhatsAppGroup(rows[0]))) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
     existingSubgroups.set(group.id, rows[0] || null);
   }
+  if (existingContainer[0]?.sync_status === "removed" && existingContainer[0].community_id !== communityId) archivedReassignments.push({ id: existingContainer[0].id, oldCommunityId: existingContainer[0].community_id, externalGroupId: source.id });
+  for (const group of source.subgroups || []) {
+    const previous = existingSubgroups.get(group.id);
+    if (previous?.sync_status === "removed" && previous.community_id !== communityId) archivedReassignments.push({ id: previous.id, oldCommunityId: previous.community_id, externalGroupId: group.id });
+  }
+  connectionId = await ensureConnection(communityId, "connected");
   const communityImage = await persistWhatsAppGroupImage(source.id, communityId + '/community');
   const communityImageUrl = communityImage || existingContainer[0]?.image_url || source.profile_picture_url || null;
   if (existingContainer[0] && existingContainer[0].community_id !== communityId && !(existingContainer[0].sync_status === "removed" && await canSafelyReuseArchivedWhatsAppGroup(existingContainer[0]))) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
@@ -855,7 +862,19 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
     });
     contactsImported += memberships.length;
   }
-  await ensureConnection(communityId, "connected");
+  if (archivedReassignments.length) {
+    await sb("audit_logs", {
+      method: "POST",
+      body: JSON.stringify(archivedReassignments.map((item) => ({
+        action: "whatsapp_group.reassigned_after_history_check",
+        entity_type: "whatsapp_group",
+        entity_id: item.id,
+        old_values: { community_id: item.oldCommunityId, external_group_id: item.externalGroupId, sync_status: "removed" },
+        new_values: { community_id: communityId, external_group_id: item.externalGroupId, sync_status: "synced" },
+      }))),
+      headers: { Prefer: "return=minimal" },
+    });
+  }
   return { communities_imported: 1, groups_imported: groupsImported, subgroups_imported: source.subgroups?.length || 0, contacts_imported: contactsImported, participants_skipped: skipped };
 }
 
