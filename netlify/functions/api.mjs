@@ -1008,6 +1008,10 @@ export default async (request) => {
               "; correspondência exata=" + (communityDiagnostics.exactMatch?.id || "não encontrada") +
               "; comunidades encontradas=" + JSON.stringify(candidates) +
               "; grupos participantes=" + (communityDiagnostics.groupCount ?? "indisponível") +
+              "; comunidades na consulta dedicada=" + (communityDiagnostics.communityFetchCount ?? "indisponível") +
+              "; grupos ligados ao JID configurado=" + (communityDiagnostics.linkedChildren?.length ?? "indisponível") +
+              "; métodos Baileys=" + JSON.stringify(communityDiagnostics.methods || {}) +
+              (communityDiagnostics.communityFetchError ? "; erro da consulta dedicada=" + communityDiagnostics.communityFetchError : "") +
               (communityDiagnostics.diagnostic_error ? "; erro do diagnóstico=" + communityDiagnostics.diagnostic_error : "")
             : "";
           return json(200,{
