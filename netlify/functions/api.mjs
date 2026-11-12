@@ -360,23 +360,16 @@ async function adminArchiveCommunity(communityId, user) {
   const current = rows[0];
   if (!current) return { status: 404, body: { message: "Comunidade não encontrada." } };
   if (current.archived_at) return { status: 200, body: { message: "Esta comunidade já estava arquivada." } };
-  const activeSubscriptions = await sb("subscriptions?select=id&community_id=eq." + communityId + "&status=in.(active,grace_period)&limit=1");
-  if (activeSubscriptions.length) return { status: 409, body: { message: "Não é possível arquivar esta comunidade enquanto existirem subscrições ativas ou em período de tolerância. Preserve primeiro o acesso dos membros." } };
-  const groups = await sb("whatsapp_groups?select=id&community_id=eq." + communityId);
-  const groupIds = groups.map(group => group.id);
-  if (groupIds.length) {
-    const inFilter = groupIds.join(",");
-    const processing = await sb("access_operations?select=id&whatsapp_group_id=in.(" + inFilter + ")&status=eq.processing&limit=1");
-    if (processing.length) return { status: 409, body: { message: "Existe uma operação WhatsApp em execução para esta comunidade. Aguarde a sua conclusão e tente novamente." } };
-    await sb("access_operations?whatsapp_group_id=in.(" + inFilter + ")&status=in.(queued,retry_pending)", { method:"PATCH", body:JSON.stringify({status:"cancelled",next_retry_at:null,updated_at:iso(new Date())}), headers:{Prefer:"return=minimal"} });
-    await sb("whatsapp_groups?community_id=eq." + communityId, { method:"PATCH", body:JSON.stringify({is_active:false,sync_status:"removed",invite_link:null,updated_at:iso(new Date())}), headers:{Prefer:"return=minimal"} });
+  try {
+    const result = await sb("rpc/archive_whatsapp_community", { method:"POST", body:JSON.stringify({p_community_id:communityId}) });
+    await writeAudit(user,"community.archived","community",communityId,current,{...result,archived_at:iso(new Date())});
+    return { status:200, body:{message:"Comunidade arquivada e dessincronizada de forma segura. O histórico foi preservado; nenhum membro foi removido do WhatsApp."} };
+  } catch (error) {
+    const message=error instanceof Error?error.message:"Não foi possível arquivar a comunidade.";
+    return { status:message.includes("não encontrada")?404:409, body:{message} };
   }
-  const now=iso(new Date());
-  const patch={status:"inactive",archived_at:now,whatsapp_community_id:null,image_url:null,updated_at:now};
-  await sb("communities?id=eq."+communityId,{method:"PATCH",body:JSON.stringify(patch),headers:{Prefer:"return=minimal"}});
-  await writeAudit(user,"community.archived","community",communityId,current,{...patch,groups_archived:groupIds.length});
-  return {status:200,body:{message:"Comunidade arquivada e dessincronizada. O histórico foi preservado; nenhum membro foi removido do WhatsApp."}};
 }
+
 async function adminRestoreCommunity(communityId,user) {
   if(!isUuid(communityId))return {status:422,body:{message:"Identificador de comunidade inválido."}};
   const rows=await sb("communities?select=id,name,status,archived_at&id=eq."+communityId+"&limit=1");
@@ -388,24 +381,23 @@ async function adminRestoreCommunity(communityId,user) {
   await writeAudit(user,"community.restored","community",communityId,current,patch);
   return {status:200,body:{message:"Comunidade restaurada como privada. Volte a associar e sincronizar a Comunidade WhatsApp; os grupos antigos continuam arquivados."}};
 }
+
 async function adminRemoveWhatsAppGroup(groupId,user) {
   if(!isUuid(groupId))return {status:422,body:{message:"Identificador de grupo inválido."}};
   const rows=await sb("whatsapp_groups?select=id,name,community_id,group_type,is_active,sync_status,external_group_id&id=eq."+groupId+"&limit=1");
   const current=rows[0];
   if(!current)return {status:404,body:{message:"Grupo não encontrado."}};
   if(current.sync_status==="removed")return {status:200,body:{message:"Este grupo já estava removido do catálogo."}};
-  const community=await sb("communities?select=id,archived_at&id=eq."+current.community_id+"&limit=1");
-  if(!community[0]||community[0].archived_at)return {status:409,body:{message:"A comunidade associada está arquivada. Restaure a comunidade antes de alterar este grupo."}};
-  const activeSubscriptions=await sb("subscriptions?select=id&community_id=eq."+current.community_id+"&status=in.(active,grace_period)&limit=1");
-  if(activeSubscriptions.length)return {status:409,body:{message:"Não é possível remover este grupo enquanto a comunidade tiver subscrições ativas ou em período de tolerância."}};
-  const processing=await sb("access_operations?select=id&whatsapp_group_id=eq."+groupId+"&status=eq.processing&limit=1");
-  if(processing.length)return {status:409,body:{message:"Existe uma operação WhatsApp em execução para este grupo. Aguarde a sua conclusão e tente novamente."}};
-  await sb("access_operations?whatsapp_group_id=eq."+groupId+"&status=in.(queued,retry_pending)",{method:"PATCH",body:JSON.stringify({status:"cancelled",next_retry_at:null,updated_at:iso(new Date())}),headers:{Prefer:"return=minimal"}});
-  const patch={is_active:false,sync_status:"removed",invite_link:null,updated_at:iso(new Date())};
-  await sb("whatsapp_groups?id=eq."+groupId,{method:"PATCH",body:JSON.stringify(patch),headers:{Prefer:"return=minimal"}});
-  await writeAudit(user,"whatsapp_group.removed_from_catalog","whatsapp_group",groupId,current,patch);
-  return {status:200,body:{message:"Grupo removido do catálogo e dessincronizado. O grupo real, os membros e o histórico no WhatsApp foram preservados."}};
+  try {
+    const result=await sb("rpc/archive_whatsapp_group",{method:"POST",body:JSON.stringify({p_group_id:groupId})});
+    await writeAudit(user,"whatsapp_group.removed_from_catalog","whatsapp_group",groupId,current,result);
+    return {status:200,body:{message:"Grupo removido do catálogo e dessincronizado de forma segura. O grupo real, os membros e o histórico no WhatsApp foram preservados."}};
+  } catch(error) {
+    const message=error instanceof Error?error.message:"Não foi possível remover o grupo.";
+    return {status:message.includes("não encontrado")?404:409,body:{message}};
+  }
 }
+
 async function adminRestoreWhatsAppGroup(groupId,user) {
   if(!isUuid(groupId))return {status:422,body:{message:"Identificador de grupo inválido."}};
   const rows=await sb("whatsapp_groups?select=id,name,community_id,sync_status&id=eq."+groupId+"&limit=1");
