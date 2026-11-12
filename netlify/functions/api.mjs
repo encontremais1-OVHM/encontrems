@@ -8,6 +8,12 @@ const KURSINHA_PRODUCT_ID = process.env.KURSINHA_PRODUCT_ID || "6aefd6a5531bcee4
 const KURSINHA_CHECKOUT_URL = process.env.KURSINHA_CHECKOUT_URL || "https://pay.kursinha.com/c/6aefd6a5531bcee4ede064fb";
 const OWNER_EMAIL = "hgconnect1@gmail.com";
 
+// The dashboard polls session status frequently. Cache the expensive community
+// permission/discovery check separately so one page poll cannot fan out into
+// repeated WhatsApp IQ requests and trigger rate-overlimit.
+let whatsappCommunityCheckCache = null;
+let whatsappCommunityCheckInFlight = null;
+
 const json = (statusCode, payload) => Response.json(payload, {
   status: statusCode,
   headers: { "cache-control": "no-store" },
@@ -1072,40 +1078,73 @@ export default async (request) => {
     if (path === "/admin/whatsapp/status" && method === "GET") {
       try {
         const status = await bridge("/status");
-        if (!status.connected) return json(200,status);
-        try {
-          const community = await bridge("/community");
-          return json(200,{...status,community_is_admin:community.isAdmin===true,community_is_owner:community.isOwner===true,community_account_role:community.accountRole|| (community.isOwner===true?"owner":community.isAdmin===true?"admin":"member"),community_name:community.subject||null});
-        } catch (error) {
-          let communityDiagnostics = null;
-          try { communityDiagnostics = await bridge("/community/diagnostics"); } catch (diagnosticError) {
-            communityDiagnostics = { diagnostic_error: diagnosticError instanceof Error ? diagnosticError.message : "Não foi possível obter o diagnóstico da comunidade." };
+        if (!status.connected) {
+          whatsappCommunityCheckCache = null;
+          return json(200,status);
+        }
+        if (whatsappCommunityCheckCache && whatsappCommunityCheckCache.expiresAt > Date.now()) {
+          return json(200,{...status,...whatsappCommunityCheckCache.value});
+        }
+        if (whatsappCommunityCheckInFlight) {
+          const cachedValue = await whatsappCommunityCheckInFlight;
+          return json(200,{...status,...cachedValue});
+        }
+        const checkPromise = (async()=>{
+          try {
+            const community = await bridge("/community");
+            return {
+              community_is_admin:community.isAdmin===true,
+              community_is_owner:community.isOwner===true,
+              community_account_role:community.accountRole||(community.isOwner===true?"owner":community.isAdmin===true?"admin":"member"),
+              community_name:community.subject||null,
+              community_check_error:null,
+              community_diagnostics:null,
+            };
+          } catch (error) {
+            let communityDiagnostics = null;
+            try { communityDiagnostics = await bridge("/community/diagnostics"); }
+            catch (diagnosticError) {
+              communityDiagnostics = { diagnostic_error: diagnosticError instanceof Error ? diagnosticError.message : "Não foi possível obter o diagnóstico da comunidade." };
+            }
+            const candidates = Array.isArray(communityDiagnostics?.communities)
+              ? communityDiagnostics.communities.map((item) => ({ id:item.id,subject:item.subject,participants:item.participantCount }))
+              : [];
+            const discoverySummary = communityDiagnostics
+              ? " Diagnóstico WhatsApp: COMMUNITY_JID=" + (communityDiagnostics.configuredJid||"indisponível") +
+                "; correspondência exata=" + (communityDiagnostics.exactMatch?.id||"não encontrada") +
+                "; comunidades encontradas=" + JSON.stringify(candidates) +
+                "; grupos participantes=" + (communityDiagnostics.groupCount??"indisponível") +
+                "; comunidades na consulta dedicada=" + (communityDiagnostics.communityFetchCount??"indisponível") +
+                "; grupos ligados ao JID configurado=" + (communityDiagnostics.linkedChildren?.length??"indisponível") +
+                "; métodos Baileys=" + JSON.stringify(communityDiagnostics.methods||{}) +
+                (communityDiagnostics.communityFetchError?"; erro da consulta dedicada="+communityDiagnostics.communityFetchError:"") +
+                (communityDiagnostics.groupFetchError?"; erro dos grupos participantes="+communityDiagnostics.groupFetchError:"") +
+                (communityDiagnostics.snapshotError?"; erro do snapshot="+communityDiagnostics.snapshotError:"") +
+                (communityDiagnostics.diagnostic_error?"; erro do diagnóstico="+communityDiagnostics.diagnostic_error:"")
+              : "";
+            return {
+              community_is_admin:null,
+              community_is_owner:null,
+              community_account_role:"unknown",
+              community_name:null,
+              community_check_error:(error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal.")+discoverySummary,
+              community_diagnostics:communityDiagnostics,
+            };
           }
-          const candidates = Array.isArray(communityDiagnostics?.communities)
-            ? communityDiagnostics.communities.map((item) => ({ id: item.id, subject: item.subject, participants: item.participantCount }))
-            : [];
-          const discoverySummary = communityDiagnostics
-            ? " Diagnóstico WhatsApp: COMMUNITY_JID=" + (communityDiagnostics.configuredJid || "indisponível") +
-              "; correspondência exata=" + (communityDiagnostics.exactMatch?.id || "não encontrada") +
-              "; comunidades encontradas=" + JSON.stringify(candidates) +
-              "; grupos participantes=" + (communityDiagnostics.groupCount ?? "indisponível") +
-              "; comunidades na consulta dedicada=" + (communityDiagnostics.communityFetchCount ?? "indisponível") +
-              "; grupos ligados ao JID configurado=" + (communityDiagnostics.linkedChildren?.length ?? "indisponível") +
-              "; métodos Baileys=" + JSON.stringify(communityDiagnostics.methods || {}) +
-              (communityDiagnostics.communityFetchError ? "; erro da consulta dedicada=" + communityDiagnostics.communityFetchError : "") +
-              (communityDiagnostics.diagnostic_error ? "; erro do diagnóstico=" + communityDiagnostics.diagnostic_error : "")
-            : "";
-          return json(200,{
-            ...status,
-            community_is_admin:null,
-            community_check_error:(error instanceof Error?error.message:"Não foi possível validar a administração da comunidade principal.")+discoverySummary,
-            community_diagnostics:communityDiagnostics,
-          });
+        })();
+        whatsappCommunityCheckInFlight = checkPromise;
+        try {
+          const value = await checkPromise;
+          // Cache success for 30s and failed discovery for 60s to honour WhatsApp cooldowns.
+          whatsappCommunityCheckCache = { value, expiresAt:Date.now()+(value.community_check_error?60_000:30_000) };
+          return json(200,{...status,...value});
+        } finally {
+          whatsappCommunityCheckInFlight = null;
         }
       } catch (error) {
         return json(503,{
           state:"unavailable",connected:false,has_qr:false,has_pairing_code:false,
-          last_error:error instanceof Error ? error.message : "Serviço WhatsApp indisponível.",
+          last_error:error instanceof Error?error.message:"Serviço WhatsApp indisponível.",
           code:"whatsapp_bridge_unavailable",
         });
       }
@@ -1193,7 +1232,7 @@ export default async (request) => {
       const result = await adminUpdateGroup(groupId, { group_type: body.group_type }, user);
       return json(result.status, result.body);
     }
-    if (path === "/admin/whatsapp/connect" && method === "POST") return json(202,await bridge("/connect","POST",{}));
+    if (path === "/admin/whatsapp/connect" && method === "POST") { whatsappCommunityCheckCache=null; return json(202,await bridge("/connect","POST",{})); }
     if (path === "/admin/whatsapp/qr" && method === "GET") return json(200,await bridge("/qr"));
     if (path === "/admin/whatsapp/pairing-code" && method === "POST") {
       const body = await request.json().catch(() => ({}));
@@ -1201,7 +1240,7 @@ export default async (request) => {
       if (!/^\d{8,15}$/.test(phone)) return json(400,{message:"Introduza o número com indicativo do país."});
       return json(200,await bridge("/pairing-code","POST",{phone}));
     }
-    if (path === "/admin/whatsapp/disconnect" && method === "POST") return json(200,await bridge("/disconnect","POST",{}));
+    if (path === "/admin/whatsapp/disconnect" && method === "POST") { whatsappCommunityCheckCache=null; return json(200,await bridge("/disconnect","POST",{})); }
     if (path === "/admin/whatsapp/communities" && method === "GET") return json(200,await bridge("/communities"));
     if (path === "/admin/whatsapp/sync" && method === "POST") {
       const body = await request.json().catch(() => ({}));
