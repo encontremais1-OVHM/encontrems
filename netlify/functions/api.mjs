@@ -754,7 +754,7 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   });
   groupsImported++;
   for (const group of source.subgroups || []) {
-    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
+    const existingRows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
     if (existingRows[0]?.sync_status === "removed") continue;
     const subgroupImage = await persistWhatsAppGroupImage(group.id, communityId + '/' + group.id);
     const subgroupImageUrl = subgroupImage || existingRows[0]?.image_url || group.profile_picture_url || null;
