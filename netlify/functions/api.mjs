@@ -738,14 +738,14 @@ async function syncWhatsApp(communityId, whatsappCommunityId) {
   let groupsImported = 0, contactsImported = 0, skipped = 0;
   const chunk = (items, size = 150) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
   const existingContainer = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(source.id) + "&limit=1");
-  if (existingContainer[0]?.sync_status === "removed") throw new Error("Esta Comunidade WhatsApp já foi removida do catálogo e mantém histórico associado a outra configuração. Para reutilizar os mesmos IDs, restaure primeiro a comunidade original e os respetivos registos; para uma configuração nova, utilize uma Comunidade WhatsApp nova.");
+  if (existingContainer[0]?.sync_status === "removed") throw new Error("Esta Comunidade WhatsApp pertence a uma configuração antiga arquivada e mantém histórico de membros/subscrições. O mesmo ID não pode ser reutilizado automaticamente noutra comunidade, porque isso pode misturar acessos antigos e novos. Para esta comunidade da plataforma, escolha uma Comunidade WhatsApp realmente nova (com ID diferente) ou restaure a comunidade original.");
   if (existingContainer[0] && existingContainer[0].community_id !== communityId) throw new Error("Esta Comunidade WhatsApp já está associada a outra comunidade da plataforma.");
   // Validate every subgroup before writing the community root. This prevents a
   // partial sync if one of the WhatsApp groups was previously archived.
   const existingSubgroups = new Map();
   for (const group of source.subgroups || []) {
     const rows = await sb("whatsapp_groups?select=id,is_active,community_id,image_url,sync_status&whatsapp_connection_id=eq." + encodeURIComponent(connectionId) + "&external_group_id=eq." + encodeURIComponent(group.id) + "&limit=1");
-    if (rows[0]?.sync_status === "removed") throw new Error("O grupo WhatsApp " + (group.subject || group.id) + " já foi removido do catálogo e mantém histórico de membros/subscrições. Não será reimportado automaticamente para evitar misturar históricos. Utilize um grupo WhatsApp novo ou restaure a configuração original.");
+    if (rows[0]?.sync_status === "removed") throw new Error("O grupo WhatsApp " + (group.subject || group.id) + " pertence a uma configuração antiga arquivada e mantém histórico de membros/subscrições. O mesmo ID não pode ser reutilizado automaticamente noutra comunidade, para não misturar acessos antigos e novos. Utilize um grupo WhatsApp realmente novo (com ID diferente) ou restaure a configuração original.");
     if (rows[0] && rows[0].community_id !== communityId) throw new Error("O subgrupo " + (group.subject || group.id) + " já está associado a outra comunidade da plataforma.");
     existingSubgroups.set(group.id, rows[0] || null);
   }
