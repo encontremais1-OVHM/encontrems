@@ -933,12 +933,12 @@ export default async (request) => {
       const result = await adminCreateCommunity(body, user);
       return json(result.status, result.body);
     }
-    const communityRestore = path.match(/^\\/admin\\/communities\\/([0-9a-f-]{36})\\/restore$/i);
+    const communityRestore = path.match(/^\/admin\/communities\/([0-9a-f-]{36})\/restore$/i);
     if (communityRestore && method === "POST") {
       const result = await adminRestoreCommunity(communityRestore[1], user);
       return json(result.status, result.body);
     }
-    const communityAction = path.match(/^\\/admin\\/communities\\/([0-9a-f-]{36})$/i);
+    const communityAction = path.match(/^\/admin\/communities\/([0-9a-f-]{36})$/i);
     if (communityAction && method === "DELETE") {
       const result = await adminArchiveCommunity(communityAction[1], user);
       return json(result.status, result.body);
@@ -1169,17 +1169,17 @@ export default async (request) => {
         community_participants_checked_at:communityParticipantsCheckedAt,
       });
     }
-    const groupRestore = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})\\/restore$/i);
+    const groupRestore = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/restore$/i);
     if (groupRestore && method === "POST") {
       const result = await adminRestoreWhatsAppGroup(groupRestore[1], user);
       return json(result.status, result.body);
     }
-    const groupAction = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})$/i);
+    const groupAction = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})$/i);
     if (groupAction && method === "DELETE") {
       const result = await adminRemoveWhatsAppGroup(groupAction[1], user);
       return json(result.status, result.body);
     }
-    const groupSettings = path.match(/^\\/admin\\/whatsapp\\/groups\\/([0-9a-f-]{36})\\/settings$/i);
+    const groupSettings = path.match(/^\/admin\/whatsapp\/groups\/([0-9a-f-]{36})\/settings$/i);
     if (groupSettings && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const result = await adminUpdateGroup(groupSettings[1], body, user);
