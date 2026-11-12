@@ -26,10 +26,12 @@ export function inviteLinks(s: RegistrationStatusResponse): {
   const subscribed = s.subscription ? ACTIVE_SUBSCRIPTION.has(s.subscription.status) : false;
   const approved = s.status === "approved";
   if (!paid || !subscribed || !approved || !s.access) return { community: null, subgroup: null, subgroups: [] };
-  const subgroups = s.access.subgroup_invite_urls
-    ?? (s.access.subgroup_invite_url ? [{id:"subgroup",name:"Subgrupo",url:s.access.subgroup_invite_url}] : []);
+  // Once WhatsApp confirms membership, do not expose another invite for that destination.
+  const subgroups = s.access.subgroup === "active"
+    ? []
+    : s.access.subgroup_invite_urls
+      ?? (s.access.subgroup_invite_url ? [{id:"subgroup",name:"Subgrupo",url:s.access.subgroup_invite_url}] : []);
   return {
-    // Show the invite only while entry is pending; hide it after WhatsApp confirms membership.
     community: s.access.community === "active" ? null : s.access.community_invite_url,
     subgroup: subgroups[0]?.url ?? null,
     subgroups,
