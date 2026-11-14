@@ -40,3 +40,4 @@ use the editor.
 - Never invent contacts, payment confirmations, QR states, group records, or dashboard numbers. Display only data returned by Supabase/Railway.
 - The owner must explicitly approve production deployment/merge; work in the audit branch until reviewed.
 - App images (logo, section photos) live in `public/` or are bundled imports; never reference Lovable-only `/__l5e/` asset URLs because they 404 on Netlify.
+- WhatsApp Community entry is done by the Railway service adding the person to the Community announcements group (direct adds to a Community root are rejected by WhatsApp); when privacy blocks a direct add, Railway sends one real invite and marks `access_operations.external_operation_id` with `invite-sent:<iso>`, which the status API reports as `invite_sent`.
