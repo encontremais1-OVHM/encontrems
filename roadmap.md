@@ -23,5 +23,8 @@
 
 ## Fase 3 — Inscrição, membros, pagamentos, assinaturas
 ## Fase 4 — Comunidades, subgrupos, controlo de acesso
-## Fase 5 — WhatsApp Bridge / Bider (bloqueado: documentação e credenciais Bider)
+## Fase 5 — WhatsApp (Railway Baileys)
+- [x] Entrada automática na Comunidade pelo grupo de avisos + convite quando a privacidade bloqueia (PR #5 no repositório do serviço WhatsApp)
+- [ ] Deploy do PR #5 no Railway (aguarda aprovação do proprietário)
+- [ ] Reenviar as 3 inscrições falhadas de 12/11 depois do deploy (aguarda aprovação)
 ## Fase 6 — Relatórios, auditoria, testes, Railway
