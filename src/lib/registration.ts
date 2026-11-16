@@ -26,6 +26,10 @@ export function inviteLinks(s: RegistrationStatusResponse): {
   const subscribed = s.subscription ? ACTIVE_SUBSCRIPTION.has(s.subscription.status) : false;
   const approved = s.status === "approved";
   if (!paid || !subscribed || !approved || !s.access) return { community: null, subgroup: null, subgroups: [] };
+  // A privacy-blocked participant must return through the signed Encontre+
+  // continuation flow. Never expose a WhatsApp group/community invite here,
+  // even if a stale or inconsistent API response contains one.
+  if (s.access.community === "invite_sent") return { community: null, subgroup: null, subgroups: [] };
   // Once WhatsApp confirms membership, do not expose another invite for that destination.
   const subgroups = s.access.subgroup === "active"
     ? []
