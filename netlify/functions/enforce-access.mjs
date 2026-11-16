@@ -208,6 +208,224 @@ async function syncConfirmedWhatsAppParticipants(nowIso) {
   return { groups_checked: groupsChecked, memberships_confirmed: rowsToConfirm.length, memberships_removed: rowsToRemove.length };
 }
 
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function processPendingRemovals(nowIso) {
+  const [operations, groups, members, subscriptions, plans, memberships] = await Promise.all([
+    db("access_operations?select=id,member_id,whatsapp_group_id,status,attempts,next_retry_at,last_error,created_at&operation_type=eq.remove&status=in.(queued,retry_pending,processing)&order=created_at.asc&limit=100"),
+    db("whatsapp_groups?select=id,community_id,external_group_id,group_type,is_active,sync_status"),
+    db("members?select=id,phone,phone_e164"),
+    db("subscriptions?select=id,member_id,community_id,plan_id,status,expires_at,grace_ends_at,created_at&order=created_at.desc&limit=2000"),
+    db("plans?select=id,grace_days"),
+    db("group_memberships?select=id,member_id,whatsapp_group_id,status"),
+  ]);
+
+  const groupById = new Map(groups.map((group) => [group.id, group]));
+  const memberById = new Map(members.map((member) => [member.id, member]));
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const membershipByKey = new Map(memberships.map((membership) => [membership.member_id + ":" + membership.whatsapp_group_id, membership]));
+  const latestSubscriptionByKey = new Map();
+  for (const subscription of subscriptions) {
+    const key = subscription.member_id + ":" + subscription.community_id;
+    if (!latestSubscriptionByKey.has(key)) latestSubscriptionByKey.set(key, subscription);
+  }
+
+  const due = operations.filter((operation) => !operation.next_retry_at || new Date(operation.next_retry_at).getTime() <= Date.now());
+  due.sort((a, b) => {
+    const aRank = groupById.get(a.whatsapp_group_id)?.group_type === "community" ? 0 : 1;
+    const bRank = groupById.get(b.whatsapp_group_id)?.group_type === "community" ? 0 : 1;
+    return aRank - bRank || String(a.created_at).localeCompare(String(b.created_at));
+  });
+
+  let attempted = 0;
+  let confirmed = 0;
+  let pending = 0;
+  let cancelled = 0;
+  const touchedSubscriptions = new Map();
+
+  for (const operation of due.slice(0, 3)) {
+    const group = groupById.get(operation.whatsapp_group_id);
+    const member = memberById.get(operation.member_id);
+    const membership = membershipByKey.get(operation.member_id + ":" + operation.whatsapp_group_id);
+    if (!group || !member || !membership || !group.external_group_id || !group.is_active || group.sync_status !== "synced") {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "O grupo, membro ou associação WhatsApp já não está disponível para remoção automática.", next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      pending++;
+      continue;
+    }
+
+    const subscription = latestSubscriptionByKey.get(operation.member_id + ":" + group.community_id);
+    if (!subscription) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "Não foi encontrada a assinatura que originou a remoção.", next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      pending++;
+      continue;
+    }
+
+    const plan = planById.get(subscription.plan_id);
+    const expiresAt = subscription.expires_at ? Date.parse(subscription.expires_at) : Number.NaN;
+    const storedGraceEnd = subscription.grace_ends_at ? Date.parse(subscription.grace_ends_at) : Number.NaN;
+    const calculatedGraceEnd = Number.isFinite(expiresAt)
+      ? expiresAt + Math.max(0, Number(plan?.grace_days || 0)) * 86_400_000
+      : Number.NaN;
+    const cutoff = Math.max(
+      Number.isFinite(storedGraceEnd) ? storedGraceEnd : Number.NEGATIVE_INFINITY,
+      Number.isFinite(calculatedGraceEnd) ? calculatedGraceEnd : Number.NEGATIVE_INFINITY,
+    );
+
+    if (["active", "grace_period"].includes(subscription.status) && cutoff > Date.now()) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled", external_operation_id: null, last_error: "A assinatura foi renovada antes da remoção; operação cancelada automaticamente.", next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      if (membership.status === "removal_pending") {
+        await db("group_memberships?id=eq." + membership.id, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "joined", removed_at: null, updated_at: nowIso }),
+          headers: { Prefer: "return=minimal" },
+        });
+        membership.status = "joined";
+      }
+      cancelled++;
+      continue;
+    }
+
+    if (membership.status === "removed") {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "succeeded", external_operation_id: "already-absent:verified-membership", last_error: null, next_retry_at: null, executed_at: nowIso, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      touchedSubscriptions.set(operation.member_id + ":" + group.community_id, subscription.id);
+      confirmed++;
+      continue;
+    }
+    if (!["joined", "removal_pending"].includes(membership.status)) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled", last_error: "A associação já não está activa; não é necessário remover este membro.", next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      cancelled++;
+      continue;
+    }
+
+    const phone = String(member.phone_e164 || member.phone || "").replace(/\D/g, "");
+    if (!/^\d{8,15}$/.test(phone)) {
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "failed", last_error: "Número WhatsApp inválido; a remoção não foi executada.", next_retry_at: null, updated_at: nowIso }),
+        headers: { Prefer: "return=minimal" },
+      });
+      pending++;
+      continue;
+    }
+
+    const attempts = Number(operation.attempts || 0) + 1;
+    await db("access_operations?id=eq." + operation.id, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "processing", attempts, last_error: "Pedido de remoção enviado; a aguardar verificação da lista real de participantes.", next_retry_at: new Date(Date.now() + 15 * 60_000).toISOString(), updated_at: nowIso }),
+      headers: { Prefer: "return=minimal" },
+    });
+    attempted++;
+
+    try {
+      const endpointBase = (group.group_type === "community" ? "/communities/" : "/groups/") + encodeURIComponent(group.external_group_id) + "/participants";
+      await bridge(endpointBase + "/remove", { phone });
+
+      let verified = false;
+      let verificationError = "O WhatsApp ainda não confirmou a saída deste participante.";
+      for (let check = 0; check < 3; check++) {
+        await sleep(1200);
+        const snapshot = await bridge(endpointBase + "?fresh=true");
+        const participants = Array.isArray(snapshot?.participants) ? snapshot.participants : null;
+        if (!participants || participants.length === 0) {
+          verificationError = "A lista de participantes veio vazia ou incompleta; a remoção não será presumida.";
+          continue;
+        }
+        let targetPresent = false;
+        let unresolvedParticipant = false;
+        for (const participant of participants) {
+          const jid = String(participant.jid || participant.id || "");
+          const participantPhone = String(participant.phoneNumber || "").replace(/\D/g, "")
+            || (jid.endsWith("@s.whatsapp.net") ? jid.split("@")[0].split(":")[0].replace(/\D/g, "") : "");
+          if (participantPhone === phone) targetPresent = true;
+          if (!participantPhone) unresolvedParticipant = true;
+        }
+        if (targetPresent) {
+          verificationError = "O número ainda aparece na lista real de participantes do WhatsApp.";
+          continue;
+        }
+        if (unresolvedParticipant) {
+          verificationError = "A lista contém identidades LID sem correspondência de número; não é seguro confirmar a remoção.";
+          continue;
+        }
+        verified = true;
+        break;
+      }
+
+      if (!verified) throw new Error(verificationError);
+
+      const verifiedAt = new Date().toISOString();
+      await db("group_memberships?id=eq." + membership.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "removed", removed_at: verifiedAt, last_synced_at: verifiedAt, updated_at: verifiedAt }),
+        headers: { Prefer: "return=minimal" },
+      });
+      membership.status = "removed";
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "succeeded", external_operation_id: "removed-verified:live-participant-snapshot", last_error: null, next_retry_at: null, executed_at: verifiedAt, updated_at: verifiedAt }),
+        headers: { Prefer: "return=minimal" },
+      });
+      await db("audit_logs", {
+        method: "POST",
+        body: JSON.stringify([{ member_id: operation.member_id, action: "whatsapp.member_removed_automatically", entity_type: "group_membership", entity_id: membership.id, old_values: { status: "removal_pending" }, new_values: { status: "removed", whatsapp_group_id: group.id, external_group_id: group.external_group_id, confirmed_by: "live_whatsapp_participant_snapshot", operation_id: operation.id, confirmed_at: verifiedAt } }]),
+        headers: { Prefer: "return=minimal" },
+      });
+      touchedSubscriptions.set(operation.member_id + ":" + group.community_id, subscription.id);
+      confirmed++;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 300) : "Falha desconhecida ao remover participante.";
+      const statusCode = Number(error?.statusCode || 0);
+      const permanent = statusCode === 403 || statusCode === 404 || /forbidden|not an administrator|administrator|community owner|grupo não encontrado|comunidade não encontrada/i.test(message);
+      const delayMs = /rate-overlimit/i.test(message)
+        ? 6 * 60 * 60_000
+        : statusCode === 408 || statusCode === 425 || statusCode === 429
+          ? 15 * 60_000
+          : statusCode >= 500
+            ? Math.min(60 * 60_000, 30_000 * (2 ** Math.min(attempts, 7)))
+            : 30 * 60_000;
+      await db("access_operations?id=eq." + operation.id, {
+        method: "PATCH",
+        body: JSON.stringify({ status: permanent ? "failed" : "retry_pending", last_error: message, next_retry_at: permanent ? null : new Date(Date.now() + delayMs).toISOString(), updated_at: new Date().toISOString() }),
+        headers: { Prefer: "return=minimal" },
+      });
+      pending++;
+    }
+  }
+
+  for (const [key, subscriptionId] of touchedSubscriptions) {
+    const [memberId, communityId] = key.split(":");
+    const communityGroupIds = groups.filter((group) => group.community_id === communityId && group.is_active).map((group) => group.id);
+    if (!communityGroupIds.length) continue;
+    const remaining = await db("group_memberships?select=id&member_id=eq." + memberId + "&whatsapp_group_id=in.(" + communityGroupIds.join(",") + ")&status=in.(joined,removal_pending)&limit=1");
+    if (!remaining.length) {
+      await db("rpc/finalize_subscription_expiry", { method: "POST", body: JSON.stringify({ p_subscription_id: subscriptionId }) });
+    }
+  }
+
+  return { attempted, confirmed, pending, cancelled };
+}
+
 export default async (_request) => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     console.error("Expiry worker missing Supabase server configuration.");
@@ -217,6 +435,7 @@ export default async (_request) => {
   const now = new Date();
   const nowIso = iso(now);
   const participantSync = await syncConfirmedWhatsAppParticipants(nowIso);
+  const removals = await processPendingRemovals(nowIso);
   // Member additions are dispatched only by the Supabase/Railway worker to avoid duplicate WhatsApp requests.
   const reminders = await processRenewalReminders(now, nowIso);
   const enteringGrace = await db("subscriptions?select=id,member_id,status,expires_at,grace_ends_at&status=eq.active&expires_at=lt." + encodeURIComponent(nowIso) + "&grace_ends_at=gte." + encodeURIComponent(nowIso) + "&limit=500");
@@ -229,6 +448,7 @@ export default async (_request) => {
     participant_sync_groups: participantSync.groups_checked,
     memberships_confirmed: participantSync.memberships_confirmed,
     additions_worker: "supabase_railway",
+    removals_worker: removals,
     renewal_reminders_sent: reminders.sent,
     renewal_reminders_pending: reminders.pending,
   });
