@@ -56,6 +56,36 @@ async function bridge(path, method = "GET", body) {
   return baileysRequest(path, { method, body });
 }
 
+async function loadRegistrationContinuation(token) {
+  if (!SERVICE_KEY) return null;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  let supplied;
+  try { supplied = Buffer.from(parts[1], "base64url"); } catch { return null; }
+  const expected = createHmac("sha256", SERVICE_KEY).update(parts[0]).digest();
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
+  let payload;
+  try { payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")); } catch { return null; }
+  if (payload?.v !== 1 || !isUuid(payload.member_id) || !isUuid(payload.subscription_id) || !isUuid(payload.community_id) || !Number.isFinite(payload.exp) || payload.exp <= Math.floor(Date.now() / 1000)) return null;
+
+  const [members, subscriptions] = await Promise.all([
+    sb("members?select=id,full_name,phone_e164,phone&id=eq." + payload.member_id + "&limit=1"),
+    sb("subscriptions?select=id,member_id,community_id,status,expires_at,grace_ends_at&id=eq." + payload.subscription_id + "&member_id=eq." + payload.member_id + "&community_id=eq." + payload.community_id + "&limit=1"),
+  ]);
+  const member = members[0];
+  const subscription = subscriptions[0];
+  if (!member || !subscription || !["pending", "active", "grace_period"].includes(subscription.status)) return null;
+  const phone = digits(member.phone_e164 || member.phone);
+  if (!/^\d{8,15}$/.test(phone)) return null;
+  const expiry = Math.max(
+    subscription.expires_at ? Date.parse(subscription.expires_at) || 0 : 0,
+    subscription.grace_ends_at ? Date.parse(subscription.grace_ends_at) || 0 : 0,
+  );
+  if (subscription.status !== "pending" && expiry > 0 && expiry < Date.now()) return null;
+  return { payload, member, subscription, phone };
+}
+
+
 /**
  * Never return a cached WhatsApp invite: an administrator can reset it at any time.
  * Refresh from the live bridge and clear the stored value whenever it cannot be verified.
@@ -1009,10 +1039,66 @@ export default async (request) => {
     if (path === "/public/communities" && method === "GET") return json(200,await publicCommunities());
     if (path === "/public/plan" && method === "GET") return json(200,await publicPlan());
     if (path === "/public/interests" && method === "GET") return json(200,await publicInterests());
+    if (path === "/public/registrations/continue" && method === "GET") {
+      const continuation = await loadRegistrationContinuation(q.token);
+      if (!continuation) return json(410,{message:"Este link de continuação é inválido ou expirou. Não faça uma nova inscrição; contacte a equipa Encontre+ para recuperar a inscrição existente."});
+      return json(200,{reference:continuation.subscription.id,whatsapp:continuation.phone,full_name:continuation.member.full_name});
+    }
+    if (path === "/public/registrations/continue" && method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const continuation = await loadRegistrationContinuation(body.token);
+      if (!continuation) return json(410,{message:"Este link de continuação é inválido ou expirou. Não faça uma nova inscrição; contacte a equipa Encontre+ para recuperar a inscrição existente."});
+      const {payload,subscription,phone} = continuation;
+      const groups = await sb("whatsapp_groups?select=id,external_group_id&community_id=eq." + payload.community_id + "&group_type=eq.community&is_active=eq.true&sync_status=eq.synced&limit=1");
+      const mainGroup = groups[0];
+      if (!mainGroup) return json(409,{message:"A Comunidade WhatsApp ainda não está sincronizada. A inscrição existente foi preservada."});
+      const memberships = await sb("group_memberships?select=id,status&member_id=eq." + payload.member_id + "&whatsapp_group_id=eq." + mainGroup.id + "&limit=1");
+      const membership = memberships[0];
+      if (!membership) return json(409,{message:"Não foi encontrada a associação original desta inscrição. A equipa Encontre+ terá de a verificar."});
+      if (membership.status === "joined") return json(200,{reference:subscription.id,whatsapp:phone,status:"already_joined"});
+      if (!["pending_invitation","invited","failed","removed"].includes(membership.status)) return json(409,{message:"A inscrição está num estado que não permite retomar automaticamente. Contacte a equipa Encontre+."});
+
+      const operationKey = "renewal-add:registration:" + membership.id;
+      const operations = await sb("access_operations?select=id,status,attempts,external_operation_id,dispatch_request_id,next_retry_at,last_error&idempotency_key=eq." + encodeURIComponent(operationKey) + "&limit=1");
+      let operation = operations[0];
+      const now = new Date();
+      const privacyHold = String(operation?.external_operation_id || "").startsWith("invite-sent:");
+      if (operation && operation.status === "processing" && !privacyHold) {
+        return json(202,{reference:subscription.id,whatsapp:phone,status:"already_processing"});
+      }
+      if (operation?.next_retry_at && new Date(operation.next_retry_at).getTime() > now.getTime() && !privacyHold) {
+        return json(429,{message:"O WhatsApp está a limitar temporariamente as tentativas. Aguarde até à próxima tentativa automática.",next_retry_at:operation.next_retry_at});
+      }
+      if (!operation) {
+        const created = await sb("access_operations",{
+          method:"POST",
+          body:JSON.stringify([{member_id:payload.member_id,whatsapp_group_id:mainGroup.id,operation_type:"add",status:"queued",idempotency_key:operationKey,attempts:0}]),
+          headers:{Prefer:"return=representation"},
+        });
+        operation = created[0];
+      } else {
+        await sb("access_operations?id=eq." + operation.id,{
+          method:"PATCH",
+          body:JSON.stringify({status:"queued",attempts:0,external_operation_id:null,dispatch_request_id:null,last_error:null,next_retry_at:null,executed_at:null,updated_at:now.toISOString()}),
+          headers:{Prefer:"return=minimal"},
+        });
+      }
+      await sb("group_memberships?id=eq." + membership.id,{
+        method:"PATCH",
+        body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",removed_at:null,updated_at:now.toISOString()}),
+        headers:{Prefer:"return=minimal"},
+      });
+      if (operation?.id) {
+        // Safe even when the status trigger already dispatched: the worker's
+        // row lock and next_retry_at guard prevent a duplicate WhatsApp request.
+        await sb("rpc/process_pending_whatsapp_adds",{method:"POST",body:JSON.stringify({p_operation_id:operation.id})});
+      }
+      return json(202,{reference:subscription.id,whatsapp:phone,status:"retry_queued"});
+    }
 
     if (path === "/webhooks/kursinha" && method === "POST") return await handleKursinhaWebhook(request);
 
-    const publicRoute = (path === "/public/registrations" && method === "POST") || (path.startsWith("/public/registrations/") && method === "GET") || (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST");
+    const publicRoute = (path === "/public/registrations" && method === "POST") || (path === "/public/registrations/continue" && (method === "GET" || method === "POST")) || (path.startsWith("/public/registrations/") && method === "GET") || (path.startsWith("/public/registrations/") && path.endsWith("/renewal") && method === "POST");
     const user = await requireSuperAdmin(request);
     if (!publicRoute && !user) return json(401,{message:"Sessão inválida ou sem permissão de Super Admin."});
 
