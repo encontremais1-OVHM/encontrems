@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertCircle, Check, Circle, Loader2, MessageCircle, RefreshCw, Search, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { PaymentPanel } from "@/components/public/PaymentPanel";
 import { PublicFooter } from "@/components/public/PublicFooter";
@@ -21,8 +21,10 @@ import { deriveJourney, type JourneyState } from "@/lib/registration";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/inscricao/estado")({
-  validateSearch: (search: Record<string, unknown>): { ref?: string } =>
-    typeof search["ref"] === "string" ? { ref: search["ref"] } : {},
+  validateSearch: (search: Record<string, unknown>): { ref?: string; token?: string } => ({
+    ...(typeof search["ref"] === "string" ? { ref: search["ref"] } : {}),
+    ...(typeof search["token"] === "string" ? { token: search["token"] } : {}),
+  }),
   head: () => ({
     meta: [
       { title: "Consultar inscrição — Encontre +" },
@@ -71,12 +73,42 @@ function EstadoPage() {
   const [phone, setPhone] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ reference: string; whatsapp: string } | null>(null);
+  const [continuation, setContinuation] = useState<{ reference: string; whatsapp: string; full_name: string } | null>(null);
+  const [continuationError, setContinuationError] = useState<string | null>(null);
+  const [continuationStarted, setContinuationStarted] = useState(false);
+
+  useEffect(() => {
+    if (!search.token || !configured) return;
+    let active = true;
+    apiRequest<{ reference: string; whatsapp: string; full_name: string }>("/public/registrations/continue", {
+      method: "GET", query: { token: search.token }, auth: false,
+    }).then((result) => {
+      if (!active) return;
+      setContinuation(result);
+      setReference(result.reference);
+      setPhone(result.whatsapp);
+      setLookup({ reference: result.reference, whatsapp: result.whatsapp });
+    }).catch((error) => {
+      if (active) setContinuationError(describeApiError(error));
+    });
+    return () => { active = false; };
+  }, [search.token, configured]);
 
   const query = useQuery({
     ...registrationStatusQuery(lookup?.reference ?? "", lookup?.whatsapp ?? ""),
     enabled: configured && lookup !== null,
   });
   const data = query.data;
+  const resumeMutation = useMutation({
+    mutationFn: () => apiRequest<{ reference: string; whatsapp: string; status: string }>("/public/registrations/continue", {
+      method: "POST", body: { token: search.token }, auth: false,
+    }),
+    onSuccess: (result) => {
+      setContinuationStarted(true);
+      setLookup({ reference: result.reference, whatsapp: result.whatsapp });
+      void query.refetch();
+    },
+  });
   const renewal = useMutation({
     mutationFn: () => apiRequest("/public/registrations/" + encodeURIComponent(data?.reference || "") + "/renewal", {
       method: "POST", body: { whatsapp: lookup?.whatsapp }, auth: false,
@@ -105,6 +137,32 @@ function EstadoPage() {
           Introduza o número da inscrição e o WhatsApp usado para acompanhar o pagamento e o acesso aos grupos.
         </p>
 
+        {search.token && (
+          <section className="mt-6 space-y-3 rounded-2xl border border-primary/20 bg-info-soft p-5">
+            <h2 className="font-semibold text-foreground">Continuar a inscrição existente</h2>
+            {continuationError ? (
+              <p className="text-sm text-destructive">{continuationError} Não faça uma nova inscrição.</p>
+            ) : continuation ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Encontrámos a inscrição de {continuation.full_name}. Não precisa de voltar a preencher os seus dados. Primeiro, altere no WhatsApp a opção Definições &gt; Privacidade &gt; Grupos para permitir que administradores adicionem o seu número. Depois, toque no botão abaixo.
+                </p>
+                {data?.access?.community !== "active" && (
+                  <Button onClick={() => resumeMutation.mutate()} disabled={resumeMutation.isPending}>
+                    {resumeMutation.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                    Já alterei a privacidade — retomar inscrição
+                  </Button>
+                )}
+                {resumeMutation.error && <p className="text-sm text-destructive">{describeApiError(resumeMutation.error)}</p>}
+                {continuationStarted && <p className="text-sm font-medium text-success">Pedido de continuação enviado. A entrada só será confirmada quando o WhatsApp confirmar a participação.</p>}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">A validar o link seguro da sua inscrição...</p>
+            )}
+            {continuationError && <Link to="/inscricao/estado" className="text-sm font-semibold text-primary hover:underline">Consultar inscrição manualmente</Link>}
+          </section>
+        )}
+
         {!configured && (
           <Alert className="mt-6 border-primary/20 bg-info-soft">
             <AlertDescription className="text-muted-foreground">
@@ -113,7 +171,7 @@ function EstadoPage() {
           </Alert>
         )}
 
-        <form onSubmit={onSubmit} noValidate className="mt-8 grid gap-4 rounded-2xl border bg-card p-5 shadow-card sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        {!search.token && <form onSubmit={onSubmit} noValidate className="mt-8 grid gap-4 rounded-2xl border bg-card p-5 shadow-card sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <div className="space-y-1.5">
             <Label htmlFor="ref">Número da inscrição</Label>
             <Input id="ref" value={reference} onChange={(e) => setReference(e.target.value)} disabled={!configured} />
@@ -136,7 +194,7 @@ function EstadoPage() {
             Consultar
           </Button>
           {formError && <p className="text-sm font-medium text-destructive sm:col-span-3">{formError}</p>}
-        </form>
+        </form>}
 
         {lookup && query.isError && (
           <p className="mt-6 flex items-start gap-2 rounded-lg bg-danger-soft px-4 py-3 text-sm font-medium text-destructive">
@@ -255,10 +313,10 @@ function WhatsAppAccess({ subgroupNames, communityName, communityStatus, communi
         <MessageCircle className="size-5 text-success" /> Acesso à Comunidade e aos subgrupos
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {communityInviteSent ? (communityError || "Enviámos-te um convite por mensagem no WhatsApp. Abre a conversa com a Encontre + e toca em \"Entrar\".") : communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisas de fazer outra inscrição.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : communityStatus === "active" ? "A tua entrada na Comunidade principal foi confirmada. Os subgrupos seleccionados estão agora a ser processados." : "A Encontre + está a solicitar primeiro a tua entrada na Comunidade principal. Os subgrupos seleccionados só serão processados depois de o WhatsApp confirmar essa entrada."}
+        {communityInviteSent ? (communityError || "Enviámos-te uma mensagem com instruções para alterar as definições de privacidade e regressar ao Encontre+. Não enviámos um link de convite para a Comunidade.") : communityFailed ? (communityError || "O WhatsApp não reconheceu o número indicado. Confirma o número completo com o indicativo +244.") : communityRetrying ? (communityError || "O WhatsApp está a limitar temporariamente as tentativas. A plataforma vai tentar novamente automaticamente; não precisas de fazer outra inscrição.") : accessComplete ? "A tua entrada na Comunidade e em todos os subgrupos seleccionados foi confirmada pelo WhatsApp." : communityStatus === "active" ? "A tua entrada na Comunidade principal foi confirmada. Os subgrupos seleccionados estão agora a ser processados." : "A Encontre + está a solicitar primeiro a tua entrada na Comunidade principal. Os subgrupos seleccionados só serão processados depois de o WhatsApp confirmar essa entrada."}
       </p>
       <p className="mt-3 text-sm text-foreground">
-        Estado da Comunidade: <span className="font-semibold">{communityInviteSent ? "Convite enviado no WhatsApp" : communityFailed ? "Entrada não concluída" : communityRetrying ? "Nova tentativa automática agendada" : communityStatus === "active" ? "Entrada confirmada" : "Adição automática em curso"}</span>
+        Estado da Comunidade: <span className="font-semibold">{communityInviteSent ? "Instruções enviadas no WhatsApp" : communityFailed ? "Entrada não concluída" : communityRetrying ? "Nova tentativa automática agendada" : communityStatus === "active" ? "Entrada confirmada" : "Adição automática em curso"}</span>
       </p>
       {communityStatus === "active" && communityInviteUrl && (
         <Button className="mt-3 w-full" onClick={() => window.open(communityInviteUrl, "_blank", "noopener,noreferrer")}>
