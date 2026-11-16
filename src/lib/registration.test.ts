@@ -52,6 +52,17 @@ describe("WhatsApp invite links", () => {
     });
   });
 
+  it("never exposes WhatsApp invite links when privacy continuation is required", () => {
+    const links = inviteLinks(status({ access: {
+      community: "invite_sent",
+      subgroup: "pending",
+      community_invite_url: "https://chat.whatsapp.com/must-not-show",
+      subgroup_invite_url: "https://chat.whatsapp.com/must-not-show-either",
+      subgroup_invite_urls: [{ id: "subgroup-1", name: "Grupo", url: "https://chat.whatsapp.com/must-not-show-either" }],
+    } }));
+    expect(links).toEqual({ community: null, subgroup: null, subgroups: [] });
+  });
+
   it("hides links while the payment is not confirmed, even if the API sent them", () => {
     const s = status();
     s.payment!.status = "pending";
