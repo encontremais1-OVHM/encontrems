@@ -251,7 +251,7 @@ async function processPendingRemovals(nowIso) {
     if (!group || !member || !membership || !group.external_group_id || !group.is_active || group.sync_status !== "synced") {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "failed", last_error: "O grupo, membro ou associação WhatsApp já não está disponível para remoção automática.", next_retry_at: null, updated_at: nowIso }),
+        body: JSON.stringify({ status: "retry_pending", last_error: "O grupo, membro ou associação WhatsApp ainda não está disponível para remoção automática.", next_retry_at: new Date(Date.now() + 30 * 60_000).toISOString(), updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       pending++;
@@ -311,7 +311,7 @@ async function processPendingRemovals(nowIso) {
     if (!["joined", "removal_pending"].includes(membership.status)) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "cancelled", last_error: "A associação já não está activa; não é necessário remover este membro.", next_retry_at: null, updated_at: nowIso }),
+        body: JSON.stringify({ status: "succeeded", external_operation_id: "no-active-membership", last_error: null, next_retry_at: null, executed_at: nowIso, updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       cancelled++;
@@ -322,7 +322,7 @@ async function processPendingRemovals(nowIso) {
     if (!/^\d{8,15}$/.test(phone)) {
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: "failed", last_error: "Número WhatsApp inválido; a remoção não foi executada.", next_retry_at: null, updated_at: nowIso }),
+        body: JSON.stringify({ status: "retry_pending", last_error: "Número WhatsApp inválido; a remoção não foi executada.", next_retry_at: new Date(Date.now() + 6 * 60 * 60_000).toISOString(), updated_at: nowIso }),
         headers: { Prefer: "return=minimal" },
       });
       pending++;
@@ -396,7 +396,7 @@ async function processPendingRemovals(nowIso) {
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 300) : "Falha desconhecida ao remover participante.";
       const statusCode = Number(error?.statusCode || 0);
-      const permanent = statusCode === 403 || statusCode === 404 || /forbidden|not an administrator|administrator|community owner|grupo não encontrado|comunidade não encontrada/i.test(message);
+      const permanent = statusCode === 403 || /forbidden|not an administrator|community owner|refusing to remove a group administrator/i.test(message);
       const delayMs = /rate-overlimit/i.test(message)
         ? 6 * 60 * 60_000
         : statusCode === 408 || statusCode === 425 || statusCode === 429
@@ -406,7 +406,7 @@ async function processPendingRemovals(nowIso) {
             : 30 * 60_000;
       await db("access_operations?id=eq." + operation.id, {
         method: "PATCH",
-        body: JSON.stringify({ status: permanent ? "failed" : "retry_pending", last_error: message, next_retry_at: permanent ? null : new Date(Date.now() + delayMs).toISOString(), updated_at: new Date().toISOString() }),
+        body: JSON.stringify({ status: permanent ? "failed" : "retry_pending", last_error: permanent && !/403|forbidden/i.test(message) ? "403 forbidden: " + message : message, next_retry_at: permanent ? null : new Date(Date.now() + delayMs).toISOString(), updated_at: new Date().toISOString() }),
         headers: { Prefer: "return=minimal" },
       });
       pending++;
