@@ -145,7 +145,7 @@ function EstadoPage() {
             ) : continuation ? (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Encontrámos a inscrição de {continuation.full_name}. Não precisa de voltar a preencher os seus dados. Primeiro, altere no WhatsApp a opção Definições &gt; Privacidade &gt; Grupos para permitir que administradores adicionem o seu número. Depois, toque no botão abaixo.
+                  Encontrámos a inscrição de {continuation.full_name}. Não precisa de voltar a preencher os seus dados. Primeiro, altere temporariamente no WhatsApp a opção Definições &gt; Privacidade &gt; Grupos para Todos, permitindo que administradores adicionem o seu número. Depois, toque no botão abaixo. Não precisa de preencher uma nova inscrição.
                 </p>
                 {data?.access?.community !== "active" && (
                   <Button onClick={() => resumeMutation.mutate()} disabled={resumeMutation.isPending}>
