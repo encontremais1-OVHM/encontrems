@@ -289,10 +289,10 @@ async function processPendingRemovals(nowIso) {
       if (membership.status === "removal_pending") {
         await db("group_memberships?id=eq." + membership.id, {
           method: "PATCH",
-          body: JSON.stringify({ status: "joined", removed_at: null, updated_at: nowIso }),
+          body: JSON.stringify({ status: "pending_invitation", removed_at: null, updated_at: nowIso }),
           headers: { Prefer: "return=minimal" },
         });
-        membership.status = "joined";
+        membership.status = "pending_invitation";
       }
       cancelled++;
       continue;
