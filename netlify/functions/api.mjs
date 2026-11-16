@@ -1083,13 +1083,14 @@ export default async (request) => {
           headers:{Prefer:"return=minimal"},
         });
       }
-      const dispatchDirectly = membership.status === "pending_invitation";
       await sb("group_memberships?id=eq." + membership.id,{
         method:"PATCH",
         body:JSON.stringify({status:"pending_invitation",external_participant_id:phone+"@s.whatsapp.net",removed_at:null,updated_at:now.toISOString()}),
         headers:{Prefer:"return=minimal"},
       });
-      if (dispatchDirectly && operation?.id) {
+      if (operation?.id) {
+        // Safe even when the status trigger already dispatched: the worker's
+        // row lock and next_retry_at guard prevent a duplicate WhatsApp request.
         await sb("rpc/process_pending_whatsapp_adds",{method:"POST",body:JSON.stringify({p_operation_id:operation.id})});
       }
       return json(202,{reference:subscription.id,whatsapp:phone,status:"retry_queued"});
