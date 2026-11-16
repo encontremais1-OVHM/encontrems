@@ -1607,7 +1607,7 @@ export default async (request) => {
         retryError.includes("rate-overlimit") || retryError.includes("limite do whatsapp")
       );
       const communityError = communityInviteSent
-        ? "As definições de privacidade do seu WhatsApp não permitem que o adicionemos directamente. Enviámos-lhe um convite por mensagem no WhatsApp: abra a conversa com a Encontre + e toque em \"Entrar\" para concluir a entrada."
+        ? "As definições de privacidade do seu WhatsApp impedem a adição automática. Enviámos uma mensagem com instruções para ajustar temporariamente Definições > Privacidade > Grupos e um link seguro para continuar a inscrição existente. Não precisa de preencher os dados novamente."
         : communityFailed
         ? (communityOperation?.last_error || "O WhatsApp não conseguiu confirmar a adição deste número.")
         : communityRetrying
